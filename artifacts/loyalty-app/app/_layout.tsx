@@ -27,9 +27,11 @@ function RootLayoutNav() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="onboarding/language" />
+      <Stack.Screen name="onboarding/slides" />
       <Stack.Screen name="onboarding/role" />
       <Stack.Screen name="auth/login" />
       <Stack.Screen name="auth/register" />
+      <Stack.Screen name="auth/forgot" />
       <Stack.Screen name="auth/role" />
       <Stack.Screen name="(customer)" />
       <Stack.Screen name="(merchant)" />

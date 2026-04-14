@@ -1,0 +1,143 @@
+Screen 2 — Onboarding slide 1 (progress bar: step 1/3):
+
+Top : 3-step progress bar, step 1 active (coral #FF6B6B), others gray
+Background top half : deep blue #1a1a6e
+Title : "Bienvenue sur Fideliio !" — white, bold, 24px
+Subtitle : "La seule app qui regroupe tous vos programmes de fidélité en un seul endroit." — white, opacity 0.8, 14px
+Bottom half : white rounded card panel (border-radius 28px top only)
+Visual grid inside panel :
+
+1 large image top (full width, 180px height, border-radius 16px) — use a placeholder image of a person shopping happily
+Below : 2 equal cards side by side (gap 10px) — left card : loyalty card illustration (coral background + white icons of cards/points), right card : Fideliio logo "F" (coral to orange gradient, same style as splash)
+
+
+Bottom buttons row : "Ignorer" (outlined, gray text) left + "Suivant →" (coral filled, white text, border-radius 99px) right
+
+
+Screen 3 — Onboarding slide 2 (progress bar: step 2/3):
+
+Same layout structure as Screen 2
+Step 2 active in progress bar
+Title : "Scannez & Gagnez !"
+Subtitle : "À chaque achat, scannez le QR code du commerçant et accumulez des points automatiquement."
+Visual grid inside panel :
+
+Top row : 1 image left (phone scanning QR code, border-radius 16px) + 1 illustrated card right (blue background, coins + QR icon in white)
+Bottom : 1 wide full-width image (merchant smiling with happy customer, border-radius 16px)
+
+
+Buttons : "Ignorer" + "Suivant →"
+
+
+Screen 4 — Onboarding slide 3 (progress bar: step 3/3):
+
+Same layout structure
+Step 3 active in progress bar
+Title : "Gagnez encore plus !"
+Subtitle : "Échangez vos points contre des récompenses exclusives chez tous vos commerces partenaires."
+Visual grid inside panel :
+
+Top : 1 wide full-width image (person relaxing using app on couch, border-radius 16px)
+Bottom row : 1 image left (smiling merchant in his shop) + 1 illustrated card right (blue/purple background, discount bags with stars illustration)
+
+
+Buttons : "Ignorer" + "Commencer →" (green #00C896, bold, full width, border-radius 99px)
+
+
+Screen 5 — Profile type selection:
+
+Clean white screen
+Top center : Fideliio "F" logo card (small, 56px, same coral gradient style)
+App name "Fideliio" below logo, bold, 20px, dark
+Title : "Vous êtes ?" — bold, 22px, centered, margin-top 24px
+Subtitle : "Choisissez votre profil pour continuer" — gray, 13px, centered
+Two large cards side by side (margin-top 24px, gap 12px, equal width) :
+
+Left card — Customer :
+
+Gradient background : coral #FF6B6B → orange #FF8E53
+Icon : 👤 (white, 32px)
+Label : "Je suis un client" (white, bold, 15px)
+Description : "Cumulez des points et profitez de récompenses" (white, opacity 0.85, 11px)
+Border-radius 20px, padding 20px, min-height 160px
+
+
+Right card — Merchant :
+
+Gradient background : deep blue #2C3E8C → teal #00B4D8
+Icon : 🏪 (white, 32px)
+Label : "Je suis un commerçant" (white, bold, 15px)
+Description : "Gérez votre programme de fidélité facilement" (white, opacity 0.85, 11px)
+Border-radius 20px, padding 20px, min-height 160px
+
+
+
+
+
+
+Authentication screens — Customer side (coral theme #FF6B6B):
+
+Login screen :
+
+Fideliio logo top center (small)
+Title : "Connexion" — bold, 22px
+Tab switcher : "Email" | "Téléphone" — coral underline on active tab
+Email tab : email input + password input (with show/hide toggle)
+Phone tab : phone number input + OTP code input (with "Envoyer le code" button)
+"Mot de passe oublié ?" link — coral, right aligned
+Large coral CTA button "Se connecter"
+Divider "ou" then Google login button (outlined)
+Bottom link : "Pas encore de compte ? S'inscrire" — coral
+
+
+Register screen — Customer :
+
+Title : "Créer un compte"
+Fields : Prénom, Nom, then tab switcher Email | Téléphone (at least one required — show inline validation message if neither filled)
+Email tab : email input
+Phone tab : phone number input
+Password input + Confirm password input
+Coral CTA button "Créer mon compte"
+Google signup button (outlined)
+Bottom link : "Déjà un compte ? Se connecter"
+All inputs use coral focus border color
+
+
+Forgot password screen :
+
+Title : "Mot de passe oublié ?"
+Subtitle : "Entrez votre email ou téléphone pour recevoir un lien de réinitialisation."
+Single input (email or phone)
+Coral CTA "Envoyer"
+Back arrow top left
+
+
+
+
+Authentication screens — Merchant side (blue/teal theme #2C3E8C):
+
+Login screen : same structure as customer login but all accent colors replaced with deep blue #2C3E8C and teal #00B4D8
+Register screen — Merchant :
+
+Same fields as customer (Prénom, Nom, Email ou Téléphone, Mot de passe)
+Additional fields :
+
+"Nom de votre commerce" — text input
+"Catégorie" — dropdown selector with options : Restaurant, Magasin de vêtements, Salon de coiffure, Hôtel, Autre
+
+
+Blue/teal CTA button "Créer mon commerce"
+All inputs use teal #00B4D8 focus border color
+
+
+Forgot password : same as customer version but blue theme
+
+
+General rules for all new screens :
+
+Use react-native-reanimated for any transition between onboarding slides (horizontal swipe animation)
+All text strings must be wrapped in i18n translation keys (FR/AR/EN)
+Arabic must trigger RTL layout on all these screens
+Onboarding slides must also be swipeable left/right with a gesture handler
+Image placeholders : use https://picsum.photos with relevant seeds until real images are provided
+Do not modify the existing splash/language/animated screen

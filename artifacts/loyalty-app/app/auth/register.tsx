@@ -5,18 +5,19 @@ import {
   StyleSheet,
   TouchableOpacity,
   Alert,
-  ScrollView,
   Platform,
+  ScrollView,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { Feather } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { useData } from "@/context/DataContext";
-import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { FideliioLogo } from "@/components/FideliioLogo";
 
 const CATEGORIES = ["restaurant", "clothing", "hairSalon", "hotel", "other"] as const;
 
@@ -28,12 +29,19 @@ export default function RegisterScreen() {
   const { setUser, language, completeOnboarding } = useApp();
   const { registerCustomer, registerMerchant } = useData();
 
+  const isMerchant = role === "merchant";
+  const accent = isMerchant ? colors.blue : colors.coral;
+  const gradientColors: [string, string] = isMerchant ? ["#2C3E8C", "#00B4D8"] : ["#FF6B6B", "#FF8E53"];
+
+  const [mode, setMode] = useState<"email" | "phone">("email");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
   const [showPw, setShowPw] = useState(false);
+  const [showConfirmPw, setShowConfirmPw] = useState(false);
   const [businessName, setBusinessName] = useState("");
   const [category, setCategory] = useState<string>("restaurant");
   const [loading, setLoading] = useState(false);
@@ -43,21 +51,20 @@ export default function RegisterScreen() {
     const errs: Record<string, string> = {};
     if (!firstName.trim()) errs.firstName = "Required";
     if (!lastName.trim()) errs.lastName = "Required";
-    if (!email.trim() && !phone.trim()) errs.email = "Email or phone required";
+    if (mode === "email" && !email.trim()) errs.email = t("auth.atLeastOne");
+    if (mode === "phone" && !phone.trim()) errs.phone = t("auth.atLeastOne");
     if (!password.trim()) errs.password = "Required";
-    if (role === "merchant" && !businessName.trim()) errs.businessName = "Required";
-    if (Object.keys(errs).length) {
-      setErrors(errs);
-      return;
-    }
+    if (password !== confirmPw) errs.confirmPw = t("auth.passwordsMatch");
+    if (isMerchant && !businessName.trim()) errs.businessName = "Required";
+    if (Object.keys(errs).length) { setErrors(errs); return; }
 
     setLoading(true);
     try {
       await new Promise((r) => setTimeout(r, 700));
       const userId = `user_${Date.now()}`;
 
-      if (role === "customer") {
-        const cust = await registerCustomer({
+      if (!isMerchant) {
+        await registerCustomer({
           userId,
           firstName,
           lastName,
@@ -65,35 +72,10 @@ export default function RegisterScreen() {
           phone: phone || undefined,
           totalPoints: 0,
         });
-        setUser({
-          id: userId,
-          role: "customer",
-          firstName,
-          lastName,
-          email: email || undefined,
-          phone: phone || undefined,
-          language,
-          totalPoints: 0,
-        });
+        setUser({ id: userId, role: "customer", firstName, lastName, email: email || undefined, phone: phone || undefined, language, totalPoints: 0 });
       } else {
-        const merch = await registerMerchant({
-          userId,
-          businessName,
-          category,
-          pointsRate: 1,
-        });
-        setUser({
-          id: userId,
-          role: "merchant",
-          firstName,
-          lastName,
-          email: email || undefined,
-          phone: phone || undefined,
-          language,
-          businessName,
-          businessCategory: category,
-          pointsRate: 1,
-        });
+        await registerMerchant({ userId, businessName, category, pointsRate: 1 });
+        setUser({ id: userId, role: "merchant", firstName, lastName, email: email || undefined, phone: phone || undefined, language, businessName, businessCategory: category, pointsRate: 1 });
       }
       await completeOnboarding();
     } catch {
@@ -104,22 +86,25 @@ export default function RegisterScreen() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View style={[styles.container, { backgroundColor: "#fff" }]}>
       <KeyboardAwareScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, { paddingTop: Platform.OS === "web" ? 80 : 60 }]}
         keyboardShouldPersistTaps="handled"
         bottomOffset={20}
         showsVerticalScrollIndicator={false}
       >
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Feather name="arrow-left" size={22} color="#0f0f0f" />
+        </TouchableOpacity>
+
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Feather name="arrow-left" size={22} color={colors.foreground} />
-          </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
-            {t("auth.register")}
+          <FideliioLogo size={52} />
+          <Text style={[styles.title, { color: "#0f0f0f", fontFamily: "Inter_700Bold" }]}>
+            {isMerchant ? t("auth.registerMerchant") : t("auth.register")}
           </Text>
         </View>
 
+        {/* Name row */}
         <View style={styles.row2}>
           <Input
             label={t("auth.firstName")}
@@ -141,25 +126,46 @@ export default function RegisterScreen() {
           />
         </View>
 
-        <Input
-          label={t("auth.email")}
-          placeholder="email@example.com"
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          leftIcon="mail"
-          error={errors.email}
-        />
+        {/* Email / Phone tab */}
+        <View style={[styles.tabRow, { borderBottomColor: "#E5E7EB" }]}>
+          {(["email", "phone"] as const).map((m) => (
+            <TouchableOpacity
+              key={m}
+              onPress={() => setMode(m)}
+              style={[styles.tab, { borderBottomColor: mode === m ? accent : "transparent", borderBottomWidth: 2 }]}
+            >
+              <Text style={[styles.tabText, {
+                color: mode === m ? accent : "#6B7280",
+                fontFamily: mode === m ? "Inter_600SemiBold" : "Inter_400Regular",
+              }]}>
+                {m === "email" ? t("auth.email") : t("auth.phone")}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
-        <Input
-          label={t("auth.phone")}
-          placeholder="+212 6XX XXX XXX"
-          value={phone}
-          onChangeText={setPhone}
-          keyboardType="phone-pad"
-          leftIcon="smartphone"
-        />
+        {mode === "email" ? (
+          <Input
+            label={t("auth.email")}
+            placeholder="email@exemple.com"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            leftIcon="mail"
+            error={errors.email}
+          />
+        ) : (
+          <Input
+            label={t("auth.phone")}
+            placeholder="+212 6XX XXX XXX"
+            value={phone}
+            onChangeText={setPhone}
+            keyboardType="phone-pad"
+            leftIcon="smartphone"
+            error={errors.phone}
+          />
+        )}
 
         <Input
           label={t("auth.password")}
@@ -173,7 +179,19 @@ export default function RegisterScreen() {
           error={errors.password}
         />
 
-        {role === "merchant" && (
+        <Input
+          label={t("auth.confirmPassword")}
+          placeholder="••••••••"
+          value={confirmPw}
+          onChangeText={setConfirmPw}
+          secureTextEntry={!showConfirmPw}
+          leftIcon="lock"
+          rightIcon={showConfirmPw ? "eye-off" : "eye"}
+          onRightIconPress={() => setShowConfirmPw((v) => !v)}
+          error={errors.confirmPw}
+        />
+
+        {isMerchant && (
           <>
             <Input
               label={t("auth.businessName")}
@@ -183,7 +201,7 @@ export default function RegisterScreen() {
               leftIcon="briefcase"
               error={errors.businessName}
             />
-            <Text style={[styles.catLabel, { color: colors.mutedForeground, fontFamily: "Inter_500Medium" }]}>
+            <Text style={[styles.catLabel, { color: "#6B7280", fontFamily: "Inter_500Medium" }]}>
               {t("auth.businessCategory")}
             </Text>
             <View style={styles.catGrid}>
@@ -195,21 +213,16 @@ export default function RegisterScreen() {
                     styles.catBtn,
                     {
                       borderRadius: colors.radius,
-                      borderColor: category === cat ? colors.primary : colors.border,
-                      backgroundColor: category === cat ? colors.accent : colors.card,
+                      borderColor: category === cat ? accent : "#E5E7EB",
+                      backgroundColor: category === cat ? (isMerchant ? colors.tealLight : colors.coralLight) : "#fff",
                       borderWidth: category === cat ? 2 : 1,
                     },
                   ]}
                 >
-                  <Text
-                    style={[
-                      styles.catText,
-                      {
-                        color: category === cat ? colors.primary : colors.mutedForeground,
-                        fontFamily: category === cat ? "Inter_600SemiBold" : "Inter_400Regular",
-                      },
-                    ]}
-                  >
+                  <Text style={[styles.catText, {
+                    color: category === cat ? accent : "#6B7280",
+                    fontFamily: category === cat ? "Inter_600SemiBold" : "Inter_400Regular",
+                  }]}>
                     {t(`auth.categories.${cat}` as any)}
                   </Text>
                 </TouchableOpacity>
@@ -218,19 +231,41 @@ export default function RegisterScreen() {
           </>
         )}
 
-        <Button
-          title={t("auth.register")}
-          onPress={handleRegister}
-          loading={loading}
-          size="lg"
-          style={styles.btn}
-        />
+        {/* CTA */}
+        <TouchableOpacity onPress={handleRegister} activeOpacity={0.88} disabled={loading} style={{ marginTop: 8 }}>
+          <LinearGradient
+            colors={gradientColors}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={[styles.ctaBtn, { borderRadius: colors.radius }]}
+          >
+            <Text style={[styles.ctaText, { fontFamily: "Inter_700Bold" }]}>
+              {loading ? t("common.loading") : (isMerchant ? t("auth.registerMerchant") : t("auth.register"))}
+            </Text>
+          </LinearGradient>
+        </TouchableOpacity>
+
+        {/* Divider + Google */}
+        <View style={styles.dividerRow}>
+          <View style={[styles.divider, { backgroundColor: "#E5E7EB" }]} />
+          <Text style={[styles.dividerText, { color: "#6B7280", fontFamily: "Inter_400Regular" }]}>
+            {t("common.or")}
+          </Text>
+          <View style={[styles.divider, { backgroundColor: "#E5E7EB" }]} />
+        </View>
+
+        <TouchableOpacity style={[styles.googleBtn, { borderRadius: colors.radius }]}>
+          <Text style={styles.googleIcon}>G</Text>
+          <Text style={[styles.googleText, { fontFamily: "Inter_500Medium" }]}>
+            {t("auth.google")}
+          </Text>
+        </TouchableOpacity>
 
         <TouchableOpacity onPress={() => router.back()} style={styles.loginLink}>
-          <Text style={[styles.loginText, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
+          <Text style={[styles.loginText, { color: "#6B7280", fontFamily: "Inter_400Regular" }]}>
             {t("auth.haveAccount")}{" "}
-            <Text style={{ color: colors.primary, fontFamily: "Inter_600SemiBold" }}>
-              {t("auth.login")}
+            <Text style={[{ color: accent, fontFamily: "Inter_600SemiBold" }]}>
+              {t("auth.signIn")}
             </Text>
           </Text>
         </TouchableOpacity>
@@ -241,16 +276,34 @@ export default function RegisterScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scroll: { padding: 24, paddingTop: Platform.OS === "web" ? 80 : 60 },
-  header: { flexDirection: "row", alignItems: "center", marginBottom: 32, gap: 12 },
-  backBtn: { padding: 4 },
-  title: { fontSize: 24, flex: 1 },
+  scroll: { padding: 24 },
+  backBtn: { marginBottom: 16 },
+  header: { alignItems: "center", gap: 12, marginBottom: 24 },
+  title: { fontSize: 22 },
   row2: { flexDirection: "row", gap: 12 },
+  tabRow: { flexDirection: "row", borderBottomWidth: 1, marginBottom: 16 },
+  tab: { flex: 1, alignItems: "center", paddingBottom: 10 },
+  tabText: { fontSize: 15 },
   catLabel: { fontSize: 13, marginBottom: 8 },
   catGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 },
-  catBtn: { paddingHorizontal: 14, paddingVertical: 8 },
+  catBtn: { paddingHorizontal: 12, paddingVertical: 8 },
   catText: { fontSize: 13 },
-  btn: { marginTop: 8 },
+  ctaBtn: { paddingVertical: 16, alignItems: "center" },
+  ctaText: { color: "#fff", fontSize: 16 },
+  dividerRow: { flexDirection: "row", alignItems: "center", marginVertical: 20, gap: 12 },
+  divider: { flex: 1, height: 1 },
+  dividerText: { fontSize: 14 },
+  googleBtn: {
+    borderWidth: 1.5,
+    borderColor: "#E5E7EB",
+    paddingVertical: 14,
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 10,
+  },
+  googleIcon: { fontSize: 18, fontWeight: "bold", color: "#4285F4" },
+  googleText: { fontSize: 15, color: "#0f0f0f" },
   loginLink: { alignItems: "center", marginTop: 20, marginBottom: 20 },
   loginText: { fontSize: 15 },
 });

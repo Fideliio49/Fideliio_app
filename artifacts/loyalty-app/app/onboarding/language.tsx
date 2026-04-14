@@ -27,7 +27,7 @@ export default function LanguageScreen() {
   const router = useRouter();
 
   async function handleContinue() {
-    router.push("/onboarding/role");
+    router.push("/onboarding/slides");
   }
 
   return (
@@ -41,7 +41,7 @@ export default function LanguageScreen() {
           <View style={[styles.logoCircle, { backgroundColor: "rgba(255,255,255,0.15)" }]}>
             <Text style={styles.logoText}>★</Text>
           </View>
-          <Text style={[styles.appName, { fontFamily: "Inter_700Bold" }]}>LoyaltyApp</Text>
+          <Text style={[styles.appName, { fontFamily: "Inter_700Bold" }]}>Fideliio</Text>
           <Text style={[styles.tagline, { fontFamily: "Inter_400Regular" }]}>
             {t("splash.tagline")}
           </Text>
