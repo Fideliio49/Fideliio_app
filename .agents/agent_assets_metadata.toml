@@ -1,0 +1,14 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "h3EPaW1-jFeDIg5BYQen8"
+uri = "file://artifacts/loyalty-app/assets/images/icon.png"
+type = "image"
+title = "loyalty app icon"
+
+[[generated]]
+id = "CaNAYdbxnR9k4rNus3jM-"
+uri = "file://artifacts/loyalty-app/assets/images/splash.png"
+type = "image"
+title = "loyalty app splash"

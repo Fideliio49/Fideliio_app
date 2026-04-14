@@ -1,0 +1,27 @@
+kind = "mobile"
+previewPath = "/"
+title = "Loyalty Program App"
+version = "1.0.0"
+id = "artifacts/loyalty-app"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+ensurePreviewReachable = "/status"
+name = "expo"
+paths = [ "/" ]
+localPort = 18976
+
+[services.development]
+run = "pnpm --filter @workspace/loyalty-app run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/loyalty-app", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/loyalty-app", "run", "serve" ]
+
+[services.env]
+PORT = "18976"
+BASE_PATH = "/"

@@ -1,0 +1,133 @@
+Build a mobile loyalty program app (React Native) for both customers and merchants — deployable on Play Store and App Store.
+
+App context:
+A mobile SaaS app where small businesses (restaurants, clothing stores, hair salons, hotels) manage a digital loyalty program for their customers. Each purchase earns points (e.g. 10 DH = 10 points). When a customer reaches a threshold, the merchant unlocks a reward (discount, free meal, free service).
+
+First launch flow:
+Splash screen → Language selection screen :
+
+🇫🇷 Français
+🇸🇦 العربية (with full RTL layout support)
+🇬🇧 English
+
+The selected language is saved locally and can be changed anytime in profile settings. Arabic must trigger a full RTL layout switch across the entire app.
+Then → Choose profile type :
+
+👤 "Je suis un client" / "I am a customer" / "أنا عميل"
+🏪 "Je suis un commerçant" / "I am a merchant" / "أنا تاجر"
+
+
+Authentication (both sides):
+
+Login : email + password OR phone number + OTP
+Register :
+
+Customer : first name, last name + email OR phone number (at least one required)
+Merchant : first name, last name + email OR phone number + business name + business category (restaurant / clothing / hair salon / hotel / other)
+
+
+Forgot password flow
+Social login optional (Google)
+
+
+Customer side — features after login:
+
+Home dashboard
+
+Welcome message with name
+Total points balance with progress bar toward next reward
+Available rewards cards (points required, reward type)
+Recent transactions list (merchant name, points earned, date)
+
+
+Merchants map / list
+
+Browse all affiliated merchants
+Filter by category
+Merchant card : name, category, logo, points rate
+
+
+Scan screen
+
+Scan merchant QR code to validate a purchase
+OR enter merchant code manually
+Show confirmation popup : points earned
+
+
+Rewards screen
+
+List of all available rewards per merchant
+Redeem button when threshold is reached
+Redemption history
+
+
+Profile screen
+
+Personal info (edit name, email, phone)
+Points history
+Language switcher (FR / AR / EN) with instant RTL toggle for Arabic
+Logout
+
+
+
+
+Merchant side — features after login:
+
+Home dashboard
+
+Total active loyalty customers
+Total points distributed this month
+Total rewards redeemed
+Recent transactions table (customer name, amount, points, date)
+
+
+Customers screen
+
+Searchable list of loyalty members
+Customer card : name, phone, total points, tier (Bronze / Silver / Gold)
+Manual points adjustment button
+
+
+Rewards & Campaigns screen
+
+Create reward : name, points required, type (discount % / free product / free service), expiry date, active toggle
+Display existing rewards as cards
+
+
+Scan & Validate screen
+
+Enter customer phone or ID + purchase amount
+Auto-calculate and credit points
+Success confirmation with points added
+Generate merchant QR code for customers to scan
+
+
+Profile & Settings
+
+Business info (name, category, logo)
+Points conversion rate (X DH = Y points)
+Notification preferences
+Language switcher (FR / AR / EN) with instant RTL toggle for Arabic
+
+
+
+
+Database tables:
+
+users (id, type: customer/merchant, first_name, last_name, email, phone, preferred_language, created_at)
+merchants (id, user_id, business_name, category, logo_url, points_rate)
+customers (id, user_id, total_points)
+transactions (id, customer_id, merchant_id, amount, points_earned, created_at)
+rewards (id, merchant_id, name, points_required, reward_type, is_active, expiry_date)
+redemptions (id, customer_id, reward_id, redeemed_at)
+
+
+Design requirements:
+
+Mobile-first UI, clean and modern
+Purple and green color scheme
+Bottom navigation bar (different per user type)
+Cards for metrics, modals for forms, smooth transitions
+Full RTL layout support when Arabic is selected (text alignment, navigation direction, icons mirroring)
+All UI strings must be fully translated in French, Arabic and English using i18n (react-i18next recommended)
+preferred_language saved in user profile and synced across devices
