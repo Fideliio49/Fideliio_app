@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   StatusBar,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -13,11 +12,12 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useColors } from "@/hooks/useColors";
 import { useApp, Language } from "@/context/AppContext";
 import { Button } from "@/components/ui/Button";
+import { SplashAnimation } from "@/components/SplashAnimation";
 
-const LANGUAGES: { code: Language; label: string; flag: string; native: string }[] = [
-  { code: "fr", label: "Français", flag: "🇫🇷", native: "Français" },
-  { code: "ar", label: "Arabic", flag: "🇸🇦", native: "العربية" },
-  { code: "en", label: "English", flag: "🇬🇧", native: "English" },
+const LANGUAGES: { code: Language; label: string }[] = [
+  { code: "fr", label: "Français" },
+  { code: "ar", label: "العربية" },
+  { code: "en", label: "English" },
 ];
 
 export default function LanguageScreen() {
@@ -34,18 +34,14 @@ export default function LanguageScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar barStyle="light-content" />
       <LinearGradient
-        colors={[colors.primary, colors.purple700]}
+        colors={["#1a1a6e", "#2C3E8C", "#1a5276"]}
         style={styles.header}
       >
-        <View style={styles.logoArea}>
-          <View style={[styles.logoCircle, { backgroundColor: "rgba(255,255,255,0.15)" }]}>
-            <Text style={styles.logoText}>★</Text>
-          </View>
-          <Text style={[styles.appName, { fontFamily: "Inter_700Bold" }]}>Fideliio</Text>
-          <Text style={[styles.tagline, { fontFamily: "Inter_400Regular" }]}>
-            {t("splash.tagline")}
-          </Text>
-        </View>
+        <Text style={[styles.appName, { fontFamily: "Inter_700Bold" }]}>Fideliio</Text>
+        <SplashAnimation />
+        <Text style={[styles.tagline, { fontFamily: "Inter_400Regular" }]}>
+          {t("splash.tagline")}
+        </Text>
       </LinearGradient>
 
       <View style={styles.content}>
@@ -65,26 +61,25 @@ export default function LanguageScreen() {
                   styles.langOption,
                   {
                     borderRadius: colors.radius,
-                    borderColor: selected ? colors.primary : colors.border,
-                    backgroundColor: selected ? colors.accent : colors.card,
+                    borderColor: selected ? colors.coral : colors.border,
+                    backgroundColor: selected ? colors.coralLight : colors.card,
                     borderWidth: selected ? 2 : 1.5,
                   },
                 ]}
               >
-                <Text style={styles.flag}>{lang.flag}</Text>
                 <Text
                   style={[
                     styles.langNative,
                     {
-                      color: selected ? colors.primary : colors.foreground,
-                      fontFamily: "Inter_600SemiBold",
+                      color: selected ? colors.coral : colors.foreground,
+                      fontFamily: selected ? "Inter_700Bold" : "Inter_500Medium",
                     },
                   ]}
                 >
-                  {lang.native}
+                  {lang.label}
                 </Text>
                 {selected && (
-                  <View style={[styles.checkDot, { backgroundColor: colors.primary }]} />
+                  <View style={[styles.checkDot, { backgroundColor: colors.coral }]} />
                 )}
               </TouchableOpacity>
             );
@@ -105,46 +100,35 @@ export default function LanguageScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
-    paddingTop: 60,
-    paddingBottom: 40,
+    paddingTop: 52,
+    paddingBottom: 20,
     alignItems: "center",
-  },
-  logoArea: {
-    alignItems: "center",
-    gap: 8,
-  },
-  logoCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 4,
-  },
-  logoText: {
-    fontSize: 32,
-    color: "#fff",
+    gap: 4,
+    maxHeight: 440,
+    overflow: "hidden",
   },
   appName: {
     fontSize: 28,
     color: "#fff",
+    letterSpacing: -0.5,
   },
   tagline: {
     fontSize: 14,
-    color: "rgba(255,255,255,0.8)",
+    color: "rgba(255,255,255,0.75)",
+    marginTop: 4,
   },
   content: {
     flex: 1,
     padding: 24,
-    paddingTop: 32,
+    paddingTop: 28,
   },
   title: {
-    fontSize: 22,
-    marginBottom: 24,
+    fontSize: 20,
+    marginBottom: 16,
     textAlign: "center",
   },
   options: {
-    gap: 12,
+    gap: 10,
     flex: 1,
   },
   langOption: {
@@ -152,9 +136,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 18,
     gap: 14,
-  },
-  flag: {
-    fontSize: 28,
   },
   langNative: {
     fontSize: 17,
@@ -166,7 +147,7 @@ const styles = StyleSheet.create({
     borderRadius: 5,
   },
   continueBtn: {
-    marginTop: 24,
+    marginTop: 20,
     marginBottom: 16,
   },
 });

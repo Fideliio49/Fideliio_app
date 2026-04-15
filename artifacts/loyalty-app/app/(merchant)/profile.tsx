@@ -10,6 +10,7 @@ import {
   Switch,
 } from "react-native";
 import { useTranslation } from "react-i18next";
+import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
@@ -19,16 +20,17 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 
-const LANGS: { code: Language; label: string; flag: string }[] = [
-  { code: "fr", label: "Français", flag: "🇫🇷" },
-  { code: "ar", label: "العربية", flag: "🇸🇦" },
-  { code: "en", label: "English", flag: "🇬🇧" },
+const LANGS: { code: Language; label: string }[] = [
+  { code: "fr", label: "Français" },
+  { code: "ar", label: "العربية" },
+  { code: "en", label: "English" },
 ];
 
 export default function MerchantProfileScreen() {
   const colors = useColors();
   const { t } = useTranslation();
   const { user, language, setLanguage, logout } = useApp();
+  const router = useRouter();
   const { getMerchantByUserId, updateMerchant } = useData();
   const insets = useSafeAreaInsets();
 
@@ -56,7 +58,14 @@ export default function MerchantProfileScreen() {
   async function handleLogout() {
     Alert.alert(t("profile.logout"), "", [
       { text: t("common.cancel"), style: "cancel" },
-      { text: t("profile.logout"), style: "destructive", onPress: logout },
+      {
+        text: t("profile.logout"),
+        style: "destructive",
+        onPress: async () => {
+          await logout();
+          router.replace("/onboarding/language");
+        },
+      },
     ]);
   }
 
@@ -169,8 +178,7 @@ export default function MerchantProfileScreen() {
                   },
                 ]}
               >
-                <Text style={styles.langFlag}>{l.flag}</Text>
-                <Text style={[styles.langLabel, { color: language === l.code ? colors.secondary : colors.mutedForeground, fontFamily: language === l.code ? "Inter_600SemiBold" : "Inter_400Regular" }]}>
+                <Text style={[styles.langLabel, { color: language === l.code ? colors.teal : colors.mutedForeground, fontFamily: language === l.code ? "Inter_600SemiBold" : "Inter_400Regular" }]}>
                   {l.label}
                 </Text>
               </TouchableOpacity>

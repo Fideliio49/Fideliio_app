@@ -94,6 +94,7 @@ export default function LoginScreen() {
       }
       setUser(mockUser);
       await completeOnboarding();
+      router.replace(isMerchant ? "/(merchant)/home" : "/(customer)/home");
     } catch {
       Alert.alert("Error", "Login failed");
     } finally {

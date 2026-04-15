@@ -6,105 +6,140 @@ import {
   Dimensions,
   TouchableOpacity,
   Image,
+  FlatList,
   Platform,
+  ListRenderItemInfo,
 } from "react-native";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  interpolate,
-  Extrapolation,
-  runOnJS,
-} from "react-native-reanimated";
-import { GestureDetector, Gesture } from "react-native-gesture-handler";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { LinearGradient } from "expo-linear-gradient";
-import { useColors } from "@/hooks/useColors";
 import { FideliioLogo } from "@/components/FideliioLogo";
+import { useColors } from "@/hooks/useColors";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const SLIDE_COUNT = 3;
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
-const SLIDE_IMAGES = {
-  slide1_main: "https://picsum.photos/seed/shopping42/800/360",
-  slide1_card: "https://picsum.photos/seed/loyalty10/400/200",
-  slide2_left: "https://picsum.photos/seed/qrscan20/400/240",
-  slide2_bottom: "https://picsum.photos/seed/merchant55/800/200",
-  slide3_top: "https://picsum.photos/seed/couch30/800/200",
-  slide3_left: "https://picsum.photos/seed/shop77/400/240",
-};
+const SLIDES = [
+  {
+    key: "1",
+    title: "onboarding.slide1.title",
+    subtitle: "onboarding.slide1.subtitle",
+    mainImage: "https://picsum.photos/seed/shopping42/800/360",
+    grid: [
+      { type: "image" as const, src: "https://picsum.photos/seed/loyalty10/400/200" },
+      { type: "card" as const, icons: "💳", label: "Points" },
+    ],
+  },
+  {
+    key: "2",
+    title: "onboarding.slide2.title",
+    subtitle: "onboarding.slide2.subtitle",
+    grid: [
+      { type: "image" as const, src: "https://picsum.photos/seed/qrscan20/400/240" },
+      { type: "card" as const, icons: "🪙", label: "QR" },
+    ],
+    bottomImage: "https://picsum.photos/seed/merchant55/800/200",
+  },
+  {
+    key: "3",
+    title: "onboarding.slide3.title",
+    subtitle: "onboarding.slide3.subtitle",
+    mainImage: "https://picsum.photos/seed/couch30/800/200",
+    grid: [
+      { type: "image" as const, src: "https://picsum.photos/seed/shop77/400/240" },
+      { type: "card" as const, icons: "🛍️", label: "⭐⭐⭐" },
+    ],
+  },
+];
 
 export default function OnboardingSlides() {
   const colors = useColors();
   const { t } = useTranslation();
   const router = useRouter();
-  const [currentSlide, setCurrentSlide] = useState(0);
-  const translateX = useSharedValue(0);
-  const startX = useSharedValue(0);
+  const flatRef = useRef<FlatList>(null);
+  const [currentIndex, setCurrentIndex] = useState(0);
 
-  function goToSlide(index: number) {
-    const clamped = Math.max(0, Math.min(SLIDE_COUNT - 1, index));
-    translateX.value = withSpring(-clamped * SCREEN_WIDTH, {
-      damping: 20,
-      stiffness: 150,
-    });
-    setCurrentSlide(clamped);
-  }
+  const isLast = currentIndex === SLIDES.length - 1;
 
   function handleNext() {
-    if (currentSlide < SLIDE_COUNT - 1) {
-      goToSlide(currentSlide + 1);
+    if (isLast) {
+      router.replace("/onboarding/role");
     } else {
-      router.push("/onboarding/role");
+      const next = currentIndex + 1;
+      flatRef.current?.scrollToIndex({ index: next, animated: true });
+      setCurrentIndex(next);
     }
   }
 
   function handleSkip() {
-    router.push("/onboarding/role");
+    router.replace("/onboarding/role");
   }
 
-  const panGesture = Gesture.Pan()
-    .onStart(() => {
-      startX.value = translateX.value;
-    })
-    .onUpdate((e) => {
-      const newVal = startX.value + e.translationX;
-      const min = -(SLIDE_COUNT - 1) * SCREEN_WIDTH;
-      translateX.value = Math.max(min, Math.min(0, newVal));
-    })
-    .onEnd((e) => {
-      const velocity = e.velocityX;
-      const offset = e.translationX;
-      let targetSlide = currentSlide;
-      if (offset < -50 || velocity < -300) {
-        targetSlide = Math.min(SLIDE_COUNT - 1, currentSlide + 1);
-      } else if (offset > 50 || velocity > 300) {
-        targetSlide = Math.max(0, currentSlide - 1);
-      }
-      runOnJS(goToSlide)(targetSlide);
-    });
+  const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
+    if (viewableItems.length > 0) {
+      setCurrentIndex(viewableItems[0].index ?? 0);
+    }
+  }).current;
 
-  const animatedSlider = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
-  }));
+  const viewabilityConfig = useRef({ viewAreaCoveragePercentThreshold: 50 }).current;
 
-  const isLast = currentSlide === SLIDE_COUNT - 1;
+  function renderSlide({ item }: ListRenderItemInfo<(typeof SLIDES)[0]>) {
+    return (
+      <View style={[styles.slide, { width: SCREEN_WIDTH }]}>
+        <LinearGradient
+          colors={[colors.deepBlue, "#2a2a8e"]}
+          style={styles.slideTop}
+        >
+          <FideliioLogo size={38} style={{ marginBottom: 10 }} />
+          <Text style={[styles.slideTitle, { fontFamily: "Inter_700Bold" }]}>
+            {t(item.title as any)}
+          </Text>
+          <Text style={[styles.slideSubtitle, { fontFamily: "Inter_400Regular" }]}>
+            {t(item.subtitle as any)}
+          </Text>
+        </LinearGradient>
+
+        <View style={styles.slideCard}>
+          {item.mainImage && (
+            <Image source={{ uri: item.mainImage }} style={styles.fullWidthImg} resizeMode="cover" />
+          )}
+          <View style={styles.twoCards}>
+            {item.grid.map((g, i) =>
+              g.type === "image" ? (
+                <Image key={i} source={{ uri: g.src }} style={styles.halfImg} resizeMode="cover" />
+              ) : (
+                <LinearGradient
+                  key={i}
+                  colors={i === 0 ? [colors.coral, colors.orange] : [colors.blue, colors.teal]}
+                  style={styles.illustCard}
+                >
+                  <Text style={styles.illustIcon}>{g.icons}</Text>
+                  <Text style={styles.illustLabel}>{g.label}</Text>
+                </LinearGradient>
+              )
+            )}
+          </View>
+          {item.bottomImage && (
+            <Image source={{ uri: item.bottomImage }} style={styles.fullWidthImg} resizeMode="cover" />
+          )}
+        </View>
+      </View>
+    );
+  }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.card }]}>
+    <View style={[styles.container, { backgroundColor: "#fff" }]}>
       {/* Progress bar */}
-      <View style={[styles.progressBar, { paddingTop: Platform.OS === "web" ? 67 : 52 }]}>
-        {Array.from({ length: SLIDE_COUNT }).map((_, i) => (
+      <View style={[styles.progress, { paddingTop: Platform.OS === "web" ? 67 : 52 }]}>
+        {SLIDES.map((_, i) => (
           <View
             key={i}
             style={[
-              styles.progressDot,
+              styles.dot,
               {
                 flex: 1,
-                backgroundColor: i === currentSlide ? colors.coral : "#E5E7EB",
-                height: i === currentSlide ? 4 : 3,
+                height: i === currentIndex ? 4 : 3,
                 borderRadius: 99,
+                backgroundColor: i === currentIndex ? colors.coral : "#E5E7EB",
               },
             ]}
           />
@@ -112,125 +147,27 @@ export default function OnboardingSlides() {
       </View>
 
       {/* Slides */}
-      <GestureDetector gesture={panGesture}>
-        <Animated.View style={[styles.slidesTrack, animatedSlider]}>
-          {/* Slide 1 */}
-          <View style={[styles.slide, { width: SCREEN_WIDTH }]}>
-            <LinearGradient
-              colors={[colors.deepBlue, "#2a2a8e"]}
-              style={styles.slideTop}
-            >
-              <FideliioLogo size={40} style={{ marginBottom: 12 }} />
-              <Text style={[styles.slideTitle, { fontFamily: "Inter_700Bold" }]}>
-                {t("onboarding.slide1.title")}
-              </Text>
-              <Text style={[styles.slideSubtitle, { fontFamily: "Inter_400Regular" }]}>
-                {t("onboarding.slide1.subtitle")}
-              </Text>
-            </LinearGradient>
-            <View style={styles.slideCard}>
-              <Image
-                source={{ uri: SLIDE_IMAGES.slide1_main }}
-                style={styles.fullWidthImg}
-                resizeMode="cover"
-              />
-              <View style={styles.twoCards}>
-                <LinearGradient
-                  colors={[colors.coral, colors.orange]}
-                  style={styles.illustrationCard}
-                >
-                  <Text style={styles.illustrationIcon}>💳</Text>
-                  <Text style={styles.illustrationText}>Points</Text>
-                </LinearGradient>
-                <LinearGradient
-                  colors={[colors.coral, colors.orange]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.illustrationCard}
-                >
-                  <FideliioLogo size={36} />
-                </LinearGradient>
-              </View>
-            </View>
-          </View>
+      <FlatList
+        ref={flatRef}
+        data={SLIDES}
+        renderItem={renderSlide}
+        keyExtractor={(item) => item.key}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        bounces={false}
+        scrollEventThrottle={16}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
+        getItemLayout={(_, index) => ({
+          length: SCREEN_WIDTH,
+          offset: SCREEN_WIDTH * index,
+          index,
+        })}
+        style={{ flex: 1 }}
+      />
 
-          {/* Slide 2 */}
-          <View style={[styles.slide, { width: SCREEN_WIDTH }]}>
-            <LinearGradient
-              colors={[colors.deepBlue, "#2a2a8e"]}
-              style={styles.slideTop}
-            >
-              <FideliioLogo size={40} style={{ marginBottom: 12 }} />
-              <Text style={[styles.slideTitle, { fontFamily: "Inter_700Bold" }]}>
-                {t("onboarding.slide2.title")}
-              </Text>
-              <Text style={[styles.slideSubtitle, { fontFamily: "Inter_400Regular" }]}>
-                {t("onboarding.slide2.subtitle")}
-              </Text>
-            </LinearGradient>
-            <View style={styles.slideCard}>
-              <View style={styles.twoCards}>
-                <Image
-                  source={{ uri: SLIDE_IMAGES.slide2_left }}
-                  style={[styles.halfImg, { flex: 1 }]}
-                  resizeMode="cover"
-                />
-                <LinearGradient
-                  colors={[colors.blue, colors.teal]}
-                  style={styles.illustrationCard}
-                >
-                  <Text style={styles.illustrationIcon}>🪙</Text>
-                  <Text style={styles.illustrationText}>QR</Text>
-                </LinearGradient>
-              </View>
-              <Image
-                source={{ uri: SLIDE_IMAGES.slide2_bottom }}
-                style={styles.fullWidthImg}
-                resizeMode="cover"
-              />
-            </View>
-          </View>
-
-          {/* Slide 3 */}
-          <View style={[styles.slide, { width: SCREEN_WIDTH }]}>
-            <LinearGradient
-              colors={[colors.deepBlue, "#2a2a8e"]}
-              style={styles.slideTop}
-            >
-              <FideliioLogo size={40} style={{ marginBottom: 12 }} />
-              <Text style={[styles.slideTitle, { fontFamily: "Inter_700Bold" }]}>
-                {t("onboarding.slide3.title")}
-              </Text>
-              <Text style={[styles.slideSubtitle, { fontFamily: "Inter_400Regular" }]}>
-                {t("onboarding.slide3.subtitle")}
-              </Text>
-            </LinearGradient>
-            <View style={styles.slideCard}>
-              <Image
-                source={{ uri: SLIDE_IMAGES.slide3_top }}
-                style={styles.fullWidthImg}
-                resizeMode="cover"
-              />
-              <View style={styles.twoCards}>
-                <Image
-                  source={{ uri: SLIDE_IMAGES.slide3_left }}
-                  style={[styles.halfImg, { flex: 1 }]}
-                  resizeMode="cover"
-                />
-                <LinearGradient
-                  colors={[colors.blue, colors.purple600]}
-                  style={styles.illustrationCard}
-                >
-                  <Text style={styles.illustrationIcon}>🛍️</Text>
-                  <Text style={styles.illustrationText}>⭐⭐⭐</Text>
-                </LinearGradient>
-              </View>
-            </View>
-          </View>
-        </Animated.View>
-      </GestureDetector>
-
-      {/* Bottom buttons */}
+      {/* Buttons */}
       <View style={[styles.buttons, { paddingBottom: Platform.OS === "web" ? 34 : 24 }]}>
         <TouchableOpacity onPress={handleSkip} style={styles.skipBtn} activeOpacity={0.7}>
           <Text style={[styles.skipText, { color: colors.mutedForeground, fontFamily: "Inter_500Medium" }]}>
@@ -272,23 +209,18 @@ export default function OnboardingSlides() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, overflow: "hidden" },
-  progressBar: {
+  progress: {
     flexDirection: "row",
     gap: 6,
     paddingHorizontal: 24,
     paddingBottom: 12,
-    zIndex: 10,
   },
-  progressDot: {},
-  slidesTrack: {
-    flex: 1,
-    flexDirection: "row",
-  },
+  dot: {},
   slide: {
     flex: 1,
   },
   slideTop: {
-    paddingTop: 20,
+    paddingTop: 18,
     paddingHorizontal: 24,
     paddingBottom: 28,
     alignItems: "center",
@@ -311,12 +243,12 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     marginTop: -16,
-    padding: 16,
+    padding: 14,
     gap: 10,
   },
   fullWidthImg: {
     width: "100%",
-    height: 160,
+    height: 150,
     borderRadius: 16,
   },
   twoCards: {
@@ -325,11 +257,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   halfImg: {
+    flex: 1,
     height: "100%",
     minHeight: 100,
     borderRadius: 16,
   },
-  illustrationCard: {
+  illustCard: {
     flex: 1,
     borderRadius: 16,
     alignItems: "center",
@@ -338,43 +271,21 @@ const styles = StyleSheet.create({
     padding: 12,
     minHeight: 100,
   },
-  illustrationIcon: {
-    fontSize: 28,
-  },
-  illustrationText: {
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: "bold",
-  },
+  illustIcon: { fontSize: 26 },
+  illustLabel: { color: "#fff", fontSize: 12, fontWeight: "bold" },
   buttons: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 24,
-    paddingTop: 16,
+    paddingTop: 14,
     gap: 12,
     backgroundColor: "#fff",
     borderTopWidth: 1,
     borderTopColor: "#F3F4F6",
   },
-  skipBtn: {
-    paddingHorizontal: 4,
-    paddingVertical: 14,
-  },
-  skipText: {
-    fontSize: 15,
-  },
-  nextBtn: {
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 99,
-  },
-  nextBtnFull: {
-    paddingVertical: 16,
-    borderRadius: 99,
-    alignItems: "center",
-  },
-  nextText: {
-    color: "#fff",
-    fontSize: 16,
-  },
+  skipBtn: { paddingHorizontal: 4, paddingVertical: 14 },
+  skipText: { fontSize: 15 },
+  nextBtn: { paddingHorizontal: 24, paddingVertical: 14, borderRadius: 99 },
+  nextBtnFull: { paddingVertical: 16, borderRadius: 99, alignItems: "center" },
+  nextText: { color: "#fff", fontSize: 16 },
 });

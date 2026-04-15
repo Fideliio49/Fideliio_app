@@ -78,6 +78,7 @@ export default function RegisterScreen() {
         setUser({ id: userId, role: "merchant", firstName, lastName, email: email || undefined, phone: phone || undefined, language, businessName, businessCategory: category, pointsRate: 1 });
       }
       await completeOnboarding();
+      router.replace(isMerchant ? "/(merchant)/home" : "/(customer)/home");
     } catch {
       Alert.alert("Error", "Registration failed");
     } finally {

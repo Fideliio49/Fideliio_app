@@ -1,0 +1,57 @@
+Fix the following 4 bugs in the existing app. Do not modify anything else.
+
+Bug 1 — Logout not working :
+
+The logout button currently does nothing unless the user force-closes the app
+Fix the logout function so that it properly clears the authentication state (AsyncStorage, context, or wherever the auth token/session is stored)
+After logout, the app must immediately navigate back to the language selection screen without requiring an app restart
+Also fix the login flow : after submitting credentials, the app must navigate to the correct dashboard instantly without needing to restart
+Make sure the AuthContext (or equivalent) triggers a re-render of the navigation stack on both login and logout actions
+
+
+Bug 2 — Language flags : replace with neutral text only :
+
+Remove all country flag emojis from the language selection screen
+Replace with clean neutral text-only options, no flags, no icons :
+
+"Français"
+"العربية"
+"English"
+
+
+Keep the same layout and selection style (highlighted row with dot indicator), just remove the flags
+
+
+Bug 3 — Onboarding screens stacked instead of separate slides :
+
+Currently all 3 onboarding screens are rendered stacked vertically on one page instead of being separate swipeable slides
+Fix this so each slide is a full-screen individual page
+Use a FlatList or ScrollView with pagingEnabled: true and horizontal: true to create a proper swipeable carousel
+Each slide must take exactly 100% of the screen width and height
+The progress bar at the top must update dynamically as the user swipes or taps "Suivant"
+"Suivant" button must programmatically scroll to the next slide
+On the last slide (step 3/3), "Commencer →" must navigate to the profile type selection screen (Screen 5)
+"Ignorer" on any slide must skip directly to Screen 5
+
+
+Bug 4 — Splash screen : animated "F" logo missing or static :
+
+The center logo on the splash screen must display a large bold letter "F" (for Fideliio), not a star or any other icon
+The "F" must sit inside a rounded square card :
+
+Gradient background : coral #FF6B6B → orange #FF8E53
+Letter "F" : white, Poppins Bold, font-size 64px
+Card size : 90x90px, border-radius 24px
+
+
+Add the following animations using react-native-reanimated :
+
+Pulse on the card : scale 1.0 → 1.06 → 1.0, infinite loop every 2.5 seconds, smooth easing
+Inner ring (5 white outline icons, radius 90px) : rotates clockwise, full loop in 12 seconds, infinite
+Outer ring (6 white outline icons, radius 145px) : rotates counter-clockwise, full loop in 18 seconds, infinite
+Each icon must stay upright at all times (apply a counter-rotation on each icon equal to the opposite of the ring rotation angle)
+Icons to use : gift, QR code, coins, discount %, star, scan waves, shopping bag, trophy, puzzle, loyalty card (use vector icons from @expo/vector-icons or equivalent)
+All animations must be smooth, infinite, and start immediately on screen mount
+
+
+The bottom language panel must remain exactly as it is

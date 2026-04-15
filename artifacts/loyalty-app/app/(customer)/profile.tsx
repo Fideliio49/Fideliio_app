@@ -9,6 +9,7 @@ import {
   Platform,
 } from "react-native";
 import { useTranslation } from "react-i18next";
+import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
@@ -19,10 +20,10 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { TransactionRow } from "@/components/TransactionRow";
 
-const LANGS: { code: Language; label: string; flag: string }[] = [
-  { code: "fr", label: "Français", flag: "🇫🇷" },
-  { code: "ar", label: "العربية", flag: "🇸🇦" },
-  { code: "en", label: "English", flag: "🇬🇧" },
+const LANGS: { code: Language; label: string }[] = [
+  { code: "fr", label: "Français" },
+  { code: "ar", label: "العربية" },
+  { code: "en", label: "English" },
 ];
 
 const TIER_COLORS: Record<string, string> = {
@@ -35,6 +36,7 @@ export default function CustomerProfileScreen() {
   const colors = useColors();
   const { t } = useTranslation();
   const { user, language, setLanguage, logout } = useApp();
+  const router = useRouter();
   const { getCustomerByUserId, getCustomerTransactions } = useData();
   const insets = useSafeAreaInsets();
 
@@ -45,7 +47,14 @@ export default function CustomerProfileScreen() {
   async function handleLogout() {
     Alert.alert(t("profile.logout"), "", [
       { text: t("common.cancel"), style: "cancel" },
-      { text: t("profile.logout"), style: "destructive", onPress: logout },
+      {
+        text: t("profile.logout"),
+        style: "destructive",
+        onPress: async () => {
+          await logout();
+          router.replace("/onboarding/language");
+        },
+      },
     ]);
   }
 
@@ -113,8 +122,7 @@ export default function CustomerProfileScreen() {
                   },
                 ]}
               >
-                <Text style={styles.langFlag}>{l.flag}</Text>
-                <Text style={[styles.langLabel, { color: language === l.code ? colors.primary : colors.mutedForeground, fontFamily: language === l.code ? "Inter_600SemiBold" : "Inter_400Regular" }]}>
+                <Text style={[styles.langLabel, { color: language === l.code ? colors.coral : colors.mutedForeground, fontFamily: language === l.code ? "Inter_600SemiBold" : "Inter_400Regular" }]}>
                   {l.label}
                 </Text>
               </TouchableOpacity>
