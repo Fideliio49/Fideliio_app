@@ -1,0 +1,83 @@
+Add a "Presque là !" section to the customer home screen. Do not modify anything else.
+
+New section to add on customer home screen, between the header and "Récompenses disponibles" :
+Section title row :
+
+Left : "🏪 Presque là !" — bold, 17px, dark in light mode / white in dark mode
+Right : "Voir tous" — customer accent color, 13px, tappable → navigates to full merchants list
+
+
+Logic to fetch and display :
+
+Query all merchants where the customer has an active points balance
+Calculate for each merchant : progress = customer_points_at_merchant / reward_threshold
+Only display merchants where progress >= 80% (customer has completed 80% or more toward the next reward)
+Sort by progress descending (closest to reward first)
+Limit to maximum 3 cards displayed — "Voir tous" shows the rest
+If no merchant meets the 80% threshold → hide the entire section silently (do not show an empty state)
+
+
+Card design for each merchant :
+┌──────────────────────────────────────────┐
+│  [icon]  Burger House          40 pts    │
+│          Repas offert        restants    │
+│  ████████████████░░░  80%               │
+└──────────────────────────────────────────┘
+
+Card : white background, border-radius 16px, border 0.5px #E0E0E0, padding 14px
+Dark mode : card background #1E1E1E, border #333
+Left : merchant category icon (same icons as merchant list screen) in a 40px rounded square, background accent color opacity 0.15
+Center :
+
+Merchant name : bold, 14px, dark/white
+Reward label : "Récompense : [reward name]" — gray, 12px
+
+
+Right side :
+
+Points remaining in bold accent color : "40 pts"
+Label below : "restants" in gray, 11px
+
+
+Progress bar below all content :
+
+Full width of card interior
+Height : 6px, border-radius 99px
+Track : gray #E0E0E0 (light) / #333 (dark)
+Fill : gradient from customer accent color → gold #F9A602
+Fill width : progress% of total width
+Percentage label right-aligned above bar : "80%" in accent color, bold, 11px
+
+
+
+
+Urgency badge :
+
+If progress >= 95% : show a small pill badge top-right of the card : "🔥 Presque !" — background gold #F9A602 opacity 0.15, text gold bold, 10px
+If progress >= 80% and < 95% : no badge, just normal card
+
+
+On card tap :
+
+Navigate to that merchant's detail page showing full rewards list and current points balance at that merchant
+
+
+Data structure needed :
+
+Create a new database query : getCustomerProgressPerMerchant(customerId) that returns for each merchant :
+
+merchant_id, merchant_name, merchant_category
+customer_points : total points the customer has accumulated at this merchant
+next_reward_threshold : points required for the next available active reward
+next_reward_name : name of that reward
+progress_percent : (customer_points / next_reward_threshold) * 100
+
+
+Filter server-side to only return records where progress_percent >= 80
+If a customer has already exceeded the threshold (progress > 100%) → show as 100% and move to "Récompenses disponibles" section instead
+
+
+Empty state (only if ALL merchants are below 80%) :
+
+Hide the section completely — no empty card, no placeholder
+The home screen flows directly from header to "Récompenses disponibles"

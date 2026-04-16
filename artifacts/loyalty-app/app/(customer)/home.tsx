@@ -21,6 +21,14 @@ import { RewardCard } from "@/components/RewardCard";
 import { TransactionRow } from "@/components/TransactionRow";
 import { Card } from "@/components/ui/Card";
 
+const CATEGORY_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
+  restaurant: "coffee",
+  clothing: "shopping-bag",
+  hairSalon: "scissors",
+  hotel: "home",
+  other: "star",
+};
+
 const STATUSBAR_HEIGHT = Platform.OS === "ios" ? 44 : (StatusBar.currentHeight ?? 0);
 
 function ZelligeOverlay({ width, height }: { width: number; height: number }) {
@@ -54,11 +62,13 @@ function ZelligeOverlay({ width, height }: { width: number; height: number }) {
 export default function CustomerHomeScreen() {
   const colors = useColors();
   const { t } = useTranslation();
-  const { user } = useApp();
+  const { user, accentColor, colorTheme } = useApp();
+  const isDark = colorTheme === "dark";
   const {
     getCustomerByUserId,
     getCustomerTransactions,
     getCustomerRewards,
+    getCustomerProgressPerMerchant,
     addRedemption,
   } = useData();
   const router = useRouter();
@@ -72,6 +82,9 @@ export default function CustomerHomeScreen() {
   const redeemableRewards = availableRewards.filter(
     ({ reward }) => (customer?.totalPoints ?? 0) >= reward.pointsRequired
   );
+  const progressItems = customer
+    ? getCustomerProgressPerMerchant(customer.id).slice(0, 3)
+    : [];
 
   const topReward = availableRewards[0];
   const nextTarget = topReward?.reward.pointsRequired ?? 200;
@@ -149,6 +162,86 @@ export default function CustomerHomeScreen() {
       </LinearGradient>
 
       <View style={[styles.content, { backgroundColor: colors.background }]}>
+
+        {progressItems.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
+                🏪 Presque là !
+              </Text>
+              <TouchableOpacity onPress={() => router.push("/(customer)/merchants")}>
+                <Text style={[styles.viewAll, { color: accentColor, fontFamily: "Inter_600SemiBold", fontSize: 13 }]}>
+                  Voir tous
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {progressItems.map((item) => {
+              const pct = item.progressPercent;
+              const remaining = item.nextRewardThreshold - item.customerPoints;
+              const icon = CATEGORY_ICONS[item.merchantCategory] ?? "star";
+              const isUrgent = pct >= 95;
+
+              return (
+                <TouchableOpacity
+                  key={item.merchantId}
+                  onPress={() => router.push("/(customer)/merchants")}
+                  activeOpacity={0.8}
+                  style={[
+                    styles.progressCard,
+                    {
+                      backgroundColor: isDark ? "#1E1E1E" : "#FFFFFF",
+                      borderColor: isDark ? "#333333" : "#E0E0E0",
+                    },
+                  ]}
+                >
+                  {isUrgent && (
+                    <View style={styles.urgencyBadge}>
+                      <Text style={[styles.urgencyText, { fontFamily: "Inter_700Bold" }]}>🔥 Presque !</Text>
+                    </View>
+                  )}
+
+                  <View style={styles.progressCardRow}>
+                    <View style={[styles.categoryIcon, { backgroundColor: accentColor + "26" }]}>
+                      <Feather name={icon} size={18} color={accentColor} />
+                    </View>
+                    <View style={styles.progressCardInfo}>
+                      <Text style={[styles.progressMerchantName, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
+                        {item.merchantName}
+                      </Text>
+                      <Text style={[styles.progressRewardLabel, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
+                        Récompense : {item.nextRewardName}
+                      </Text>
+                    </View>
+                    <View style={styles.progressPointsCol}>
+                      <Text style={[styles.progressPoints, { color: accentColor, fontFamily: "Inter_700Bold" }]}>
+                        {remaining} pts
+                      </Text>
+                      <Text style={[styles.progressPointsLabel, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
+                        restants
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.progressBarSection}>
+                    <Text style={[styles.progressPct, { color: accentColor, fontFamily: "Inter_700Bold" }]}>
+                      {Math.round(pct)}%
+                    </Text>
+                    <View style={[styles.progressTrack, { backgroundColor: isDark ? "#333333" : "#E0E0E0" }]}>
+                      <LinearGradient
+                        colors={[accentColor, "#F9A602"]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 0 }}
+                        style={[styles.progressFillBar, { width: `${pct}%` as any }]}
+                      />
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+
         {redeemableRewards.length > 0 && (
           <View style={styles.section}>
             <Text
@@ -322,5 +415,75 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 14,
     textAlign: "center",
+  },
+  progressCard: {
+    borderRadius: 16,
+    borderWidth: 0.5,
+    padding: 14,
+    marginBottom: 10,
+    overflow: "hidden",
+  },
+  urgencyBadge: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    backgroundColor: "rgba(249,166,2,0.15)",
+    borderRadius: 99,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    zIndex: 1,
+  },
+  urgencyText: {
+    color: "#F9A602",
+    fontSize: 10,
+  },
+  progressCardRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 10,
+  },
+  categoryIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  progressCardInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  progressMerchantName: {
+    fontSize: 14,
+  },
+  progressRewardLabel: {
+    fontSize: 12,
+  },
+  progressPointsCol: {
+    alignItems: "flex-end",
+    gap: 1,
+  },
+  progressPoints: {
+    fontSize: 14,
+  },
+  progressPointsLabel: {
+    fontSize: 11,
+  },
+  progressBarSection: {
+    gap: 4,
+  },
+  progressPct: {
+    fontSize: 11,
+    textAlign: "right",
+  },
+  progressTrack: {
+    height: 6,
+    borderRadius: 99,
+    overflow: "hidden",
+  },
+  progressFillBar: {
+    height: 6,
+    borderRadius: 99,
   },
 });

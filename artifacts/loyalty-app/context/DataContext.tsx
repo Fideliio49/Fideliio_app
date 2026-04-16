@@ -57,6 +57,16 @@ export interface CustomerData {
   qrCode?: string;
 }
 
+export interface MerchantProgressItem {
+  merchantId: string;
+  merchantName: string;
+  merchantCategory: string;
+  customerPoints: number;
+  nextRewardThreshold: number;
+  nextRewardName: string;
+  progressPercent: number;
+}
+
 interface DataContextType {
   transactions: Transaction[];
   rewards: Reward[];
@@ -74,6 +84,7 @@ interface DataContextType {
   getMerchantRewards: (merchantId: string) => Reward[];
   getCustomerRewards: (customerId: string) => { reward: Reward; merchant: MerchantData }[];
   getCustomerRedemptions: (customerId: string) => Redemption[];
+  getCustomerProgressPerMerchant: (customerId: string) => MerchantProgressItem[];
   registerMerchant: (m: Omit<MerchantData, "id" | "totalCustomers" | "pointsThisMonth" | "rewardsRedeemed" | "qrCode">) => Promise<MerchantData>;
   registerCustomer: (c: Omit<CustomerData, "id" | "tier" | "qrCode">) => Promise<CustomerData>;
   getMerchantById: (id: string) => MerchantData | undefined;
@@ -295,6 +306,45 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return redemptions.filter((r) => r.customerId === customerId);
   }
 
+  function getCustomerProgressPerMerchant(customerId: string): MerchantProgressItem[] {
+    const custTxs = transactions.filter((t) => t.customerId === customerId);
+    const pointsByMerchant: Record<string, number> = {};
+    for (const t of custTxs) {
+      pointsByMerchant[t.merchantId] = (pointsByMerchant[t.merchantId] ?? 0) + t.pointsEarned;
+    }
+
+    const result: MerchantProgressItem[] = [];
+
+    for (const [merchantId, customerPoints] of Object.entries(pointsByMerchant)) {
+      if (customerPoints <= 0) continue;
+      const merchant = merchants.find((m) => m.id === merchantId);
+      if (!merchant) continue;
+
+      const merchantRewards = rewards
+        .filter((r) => r.merchantId === merchantId && r.isActive)
+        .sort((a, b) => a.pointsRequired - b.pointsRequired);
+      if (merchantRewards.length === 0) continue;
+
+      const nextReward = merchantRewards.find((r) => customerPoints < r.pointsRequired);
+      if (!nextReward) continue;
+
+      const progressPercent = Math.min(100, (customerPoints / nextReward.pointsRequired) * 100);
+      if (progressPercent < 80) continue;
+
+      result.push({
+        merchantId,
+        merchantName: merchant.businessName,
+        merchantCategory: merchant.category,
+        customerPoints,
+        nextRewardThreshold: nextReward.pointsRequired,
+        nextRewardName: nextReward.name,
+        progressPercent,
+      });
+    }
+
+    return result.sort((a, b) => b.progressPercent - a.progressPercent);
+  }
+
   async function registerMerchant(
     m: Omit<MerchantData, "id" | "totalCustomers" | "pointsThisMonth" | "rewardsRedeemed" | "qrCode">
   ): Promise<MerchantData> {
@@ -374,6 +424,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         getMerchantRewards,
         getCustomerRewards,
         getCustomerRedemptions,
+        getCustomerProgressPerMerchant,
         registerMerchant,
         registerCustomer,
         getMerchantById,
