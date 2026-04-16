@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
+  Animated,
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useFocusEffect } from "expo-router";
@@ -21,7 +22,17 @@ import { Input } from "@/components/ui/Input";
 import { Card } from "@/components/ui/Card";
 import * as Haptics from "expo-haptics";
 
-type ScanStep = "scanning" | "confirm" | "success";
+type ScanStep = "scanning" | "confirm" | "amount" | "success";
+
+const QUICK_AMOUNTS = [20, 50, 100, 200];
+const MULTIPLIERS = [1, 2, 5, 10, 20, 50];
+
+function formatAmount(raw: string): string {
+  if (!raw || raw === "0") return "0";
+  const n = parseInt(raw, 10);
+  if (isNaN(n)) return "0";
+  return n.toLocaleString("fr-FR");
+}
 
 export default function MerchantScanScreen() {
   const colors = useColors();
@@ -32,15 +43,22 @@ export default function MerchantScanScreen() {
 
   const [step, setStep] = useState<ScanStep>("scanning");
   const [scannedCustomer, setScannedCustomer] = useState<CustomerData | null>(null);
-  const [amount, setAmount] = useState("");
+  const [rawAmount, setRawAmount] = useState("0");
+  const [multiplier, setMultiplier] = useState(1);
   const [loading, setLoading] = useState(false);
   const [successData, setSuccessData] = useState<{ points: number; name: string } | null>(null);
   const [webCode, setWebCode] = useState("");
   const [activelyScanning, setActivelyScanning] = useState(true);
 
+  const scaleAnim = useRef(new Animated.Value(0)).current;
+
   const merchant = user ? getMerchantByUserId(user.id) : null;
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const isDark = colorTheme === "dark";
+
+  const amountNum = parseInt(rawAmount, 10) || 0;
+  const effectiveAmount = amountNum * multiplier;
+  const points = merchant ? Math.floor(effectiveAmount * merchant.pointsRate) : 0;
 
   useFocusEffect(
     useCallback(() => {
@@ -53,13 +71,30 @@ export default function MerchantScanScreen() {
     if (step === "scanning") {
       StatusBar.setBarStyle("light-content", true);
       if (Platform.OS === "android") StatusBar.setBackgroundColor("#000", true);
+    } else if (step === "success") {
+      StatusBar.setBarStyle("light-content", true);
+      if (Platform.OS === "android") StatusBar.setBackgroundColor(merchantAccentColor, true);
     } else {
       StatusBar.setBarStyle(isDark ? "light-content" : "dark-content", true);
       if (Platform.OS === "android") {
         StatusBar.setBackgroundColor(isDark ? "#121212" : "#F9FAFB", true);
       }
     }
-  }, [step, isDark]);
+  }, [step, isDark, merchantAccentColor]);
+
+  useEffect(() => {
+    if (step === "success") {
+      scaleAnim.setValue(0);
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        tension: 80,
+        friction: 8,
+        useNativeDriver: true,
+      }).start();
+      const timer = setTimeout(handleReset, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [step]);
 
   function handleBarcodeScan({ data }: { data: string }) {
     if (!activelyScanning) return;
@@ -86,20 +121,46 @@ export default function MerchantScanScreen() {
     }
   }
 
+  function handleKeypad(key: string) {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (key === "⌫") {
+      setRawAmount((prev) => {
+        const next = prev.slice(0, -1);
+        return next === "" || next === "0" ? "0" : next;
+      });
+    } else if (key === "00") {
+      setRawAmount((prev) => {
+        if (prev === "0") return "0";
+        const next = prev + "00";
+        return parseInt(next, 10) > 999999 ? prev : next;
+      });
+    } else {
+      setRawAmount((prev) => {
+        if (prev === "0") {
+          return key === "0" ? "0" : key;
+        }
+        const next = prev + key;
+        return parseInt(next, 10) > 999999 ? prev : next;
+      });
+    }
+  }
+
+  function handleQuickAmount(amount: number) {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setRawAmount(String(amount));
+  }
+
   async function handleValidate() {
-    if (!scannedCustomer || !amount || isNaN(parseFloat(amount))) return;
+    if (!scannedCustomer || amountNum === 0) return;
     setLoading(true);
     try {
-      const amountNum = parseFloat(amount);
-      const rate = merchant?.pointsRate ?? 1;
-      const points = Math.floor(amountNum * rate);
       if (merchant) {
         await addTransaction({
           customerId: scannedCustomer.id,
           merchantId: merchant.id,
           merchantName: merchant.businessName,
           customerName: `${scannedCustomer.firstName} ${scannedCustomer.lastName}`,
-          amount: amountNum,
+          amount: effectiveAmount,
           pointsEarned: points,
         });
       }
@@ -109,8 +170,6 @@ export default function MerchantScanScreen() {
         name: `${scannedCustomer.firstName} ${scannedCustomer.lastName[0]}.`,
       });
       setStep("success");
-      setScannedCustomer(null);
-      setAmount("");
     } catch {
       Alert.alert("Erreur", "La validation a échoué.");
     } finally {
@@ -121,7 +180,8 @@ export default function MerchantScanScreen() {
   function handleReset() {
     setStep("scanning");
     setScannedCustomer(null);
-    setAmount("");
+    setRawAmount("0");
+    setMultiplier(1);
     setSuccessData(null);
     setWebCode("");
     setActivelyScanning(true);
@@ -130,44 +190,211 @@ export default function MerchantScanScreen() {
   // ── Success ─────────────────────────────────────────────────────
   if (step === "success" && successData) {
     return (
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={[styles.centeredWrap, { paddingTop: topPad + 20 }]}>
-          <View style={[styles.successIcon, { backgroundColor: merchantAccentColor + "18" }]}>
-            <Feather name="check-circle" size={60} color={merchantAccentColor} />
-          </View>
-          <Text
-            style={[styles.successTitle, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}
-          >
-            Validation réussie !
+      <View style={[styles.container, { backgroundColor: merchantAccentColor }]}>
+        <StatusBar translucent backgroundColor="transparent" />
+        <View style={styles.centeredWrap}>
+          <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+            <View style={styles.successCircle}>
+              <Feather name="check" size={72} color={merchantAccentColor} />
+            </View>
+          </Animated.View>
+          <Text style={[styles.successTitle, { fontFamily: "Inter_700Bold" }]}>
+            ✓ {successData.points.toLocaleString("fr-FR")} points ajoutés à{"\n"}
+            {successData.name} !
           </Text>
-          <Text
-            style={[styles.successMsg, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}
-          >
-            ✓ {successData.points} points ajoutés à {successData.name}
-          </Text>
-          <Button
-            title="Nouveau scan"
-            onPress={handleReset}
-            size="lg"
-            style={{ marginTop: 32, minWidth: 200, backgroundColor: merchantAccentColor, borderRadius: 99 }}
-          />
         </View>
+      </View>
+    );
+  }
+
+  // ── Amount input ─────────────────────────────────────────────────
+  if (step === "amount" && scannedCustomer) {
+    const isValid = amountNum > 0;
+
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <StatusBar translucent backgroundColor="transparent" />
+
+        <View style={[styles.header, { paddingTop: topPad + 12 }]}>
+          <TouchableOpacity onPress={() => setStep("confirm")} style={styles.backBtn}>
+            <Feather name="arrow-left" size={22} color={colors.foreground} />
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
+            Montant de l'achat
+          </Text>
+        </View>
+
+        <ScrollView
+          contentContainerStyle={{ paddingBottom: 32 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.amountCustomerRow}>
+            <View style={[styles.miniAvatar, { backgroundColor: merchantAccentColor + "20" }]}>
+              <Text style={[styles.miniInitial, { color: merchantAccentColor, fontFamily: "Inter_700Bold" }]}>
+                {scannedCustomer.firstName[0]}{scannedCustomer.lastName[0]}
+              </Text>
+            </View>
+            <View>
+              <Text style={[styles.miniName, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]}>
+                {scannedCustomer.firstName} {scannedCustomer.lastName}
+              </Text>
+              <Text style={[styles.miniPoints, { color: "#F9A602", fontFamily: "Inter_400Regular" }]}>
+                {scannedCustomer.totalPoints} pts actuels
+              </Text>
+            </View>
+          </View>
+
+          <View style={[styles.amountBox, { borderColor: merchantAccentColor }]}>
+            <Text style={[styles.amountValue, { color: merchantAccentColor, fontFamily: "Inter_700Bold" }]}>
+              {formatAmount(rawAmount)} DH
+            </Text>
+          </View>
+
+          <View style={styles.keypad}>
+            {[["1","2","3"],["4","5","6"],["7","8","9"],["00","0","⌫"]].map((row, ri) => (
+              <View key={ri} style={styles.keypadRow}>
+                {row.map((key) => (
+                  <TouchableOpacity
+                    key={key}
+                    style={[styles.keypadBtn, { backgroundColor: colors.card }]}
+                    onPress={() => handleKeypad(key)}
+                    activeOpacity={0.7}
+                  >
+                    {key === "⌫" ? (
+                      <Feather name="delete" size={22} color={colors.foreground} />
+                    ) : (
+                      <Text style={[styles.keypadLabel, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]}>
+                        {key}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ))}
+          </View>
+
+          <View style={styles.quickRow}>
+            {QUICK_AMOUNTS.map((q) => (
+              <TouchableOpacity
+                key={q}
+                style={[
+                  styles.quickPill,
+                  {
+                    borderColor: merchantAccentColor,
+                    backgroundColor: amountNum === q ? merchantAccentColor : "transparent",
+                  },
+                ]}
+                onPress={() => handleQuickAmount(q)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.quickLabel,
+                    {
+                      color: amountNum === q ? "#fff" : merchantAccentColor,
+                      fontFamily: "Inter_600SemiBold",
+                    },
+                  ]}
+                >
+                  {q} DH
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <View style={styles.multSection}>
+            <Text style={[styles.multLabel, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
+              × Multiplicateur
+            </Text>
+            <View style={styles.multRow}>
+              {MULTIPLIERS.map((m) => (
+                <TouchableOpacity
+                  key={m}
+                  style={[
+                    styles.multPill,
+                    {
+                      borderColor: merchantAccentColor,
+                      backgroundColor: multiplier === m ? merchantAccentColor : "transparent",
+                    },
+                  ]}
+                  onPress={() => {
+                    setMultiplier(m);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.multPillLabel,
+                      {
+                        color: multiplier === m ? "#fff" : merchantAccentColor,
+                        fontFamily: "Inter_600SemiBold",
+                      },
+                    ]}
+                  >
+                    ×{m}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          <View style={[styles.summary, { backgroundColor: colors.card, borderRadius: colors.radius }]}>
+            <View style={styles.summaryRow}>
+              <Text style={[styles.summaryKey, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
+                Montant réel
+              </Text>
+              <Text style={[styles.summaryVal, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]}>
+                {effectiveAmount.toLocaleString("fr-FR")} DH
+              </Text>
+            </View>
+            <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
+            <View style={styles.summaryRow}>
+              <Text style={[styles.summaryKey, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
+                Points à créditer
+              </Text>
+              <Text style={[styles.summaryVal, { color: "#F9A602", fontFamily: "Inter_700Bold" }]}>
+                {points.toLocaleString("fr-FR")} pts ⭐
+              </Text>
+            </View>
+          </View>
+
+          <View style={{ paddingHorizontal: 20, marginTop: 16 }}>
+            <TouchableOpacity
+              onPress={isValid ? handleValidate : undefined}
+              activeOpacity={isValid ? 0.85 : 1}
+              style={[
+                styles.validateBtn,
+                {
+                  backgroundColor: isValid ? merchantAccentColor : colors.border,
+                },
+              ]}
+            >
+              {loading ? (
+                <Text style={[styles.validateLabel, { fontFamily: "Inter_700Bold" }]}>
+                  Chargement…
+                </Text>
+              ) : (
+                <Text style={[styles.validateLabel, { fontFamily: "Inter_700Bold" }]}>
+                  Valider — +{points.toLocaleString("fr-FR")} pts
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       </View>
     );
   }
 
   // ── Confirm (customer found) ─────────────────────────────────────
   if (step === "confirm" && scannedCustomer) {
-    const preview =
-      amount && !isNaN(parseFloat(amount)) && merchant
-        ? Math.floor(parseFloat(amount) * merchant.pointsRate)
-        : null;
-
     return (
       <ScrollView
         style={[styles.container, { backgroundColor: colors.background }]}
         contentContainerStyle={{ paddingBottom: 100 }}
       >
+        <StatusBar translucent backgroundColor="transparent" />
         <View style={[styles.header, { paddingTop: topPad + 12 }]}>
           <TouchableOpacity onPress={handleReset} style={styles.backBtn}>
             <Feather name="arrow-left" size={22} color={colors.foreground} />
@@ -175,7 +402,7 @@ export default function MerchantScanScreen() {
           <Text
             style={[styles.title, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}
           >
-            Valider l'achat
+            Client identifié
           </Text>
         </View>
         <View style={styles.content}>
@@ -207,45 +434,19 @@ export default function MerchantScanScreen() {
             </View>
           </Card>
 
-          <Card>
-            <Input
-              label="Montant de l'achat (DH)"
-              placeholder="0.00"
-              value={amount}
-              onChangeText={setAmount}
-              keyboardType="decimal-pad"
-              leftIcon="tag"
+          <View style={styles.btnRow}>
+            <Button
+              title="Annuler"
+              onPress={handleReset}
+              variant="outline"
+              style={{ flex: 1 }}
             />
-            {preview !== null && (
-              <View
-                style={[
-                  styles.preview,
-                  { backgroundColor: merchantAccentColor + "18", borderRadius: colors.radius },
-                ]}
-              >
-                <Feather name="zap" size={16} color={merchantAccentColor} />
-                <Text
-                  style={[styles.previewText, { color: merchantAccentColor, fontFamily: "Inter_600SemiBold" }]}
-                >
-                  +{preview} points à créditer
-                </Text>
-              </View>
-            )}
-            <View style={styles.btnRow}>
-              <Button
-                title="Annuler"
-                onPress={handleReset}
-                variant="outline"
-                style={{ flex: 1 }}
-              />
-              <Button
-                title="Valider"
-                onPress={handleValidate}
-                loading={loading}
-                style={{ flex: 1, backgroundColor: merchantAccentColor, borderRadius: 99 }}
-              />
-            </View>
-          </Card>
+            <Button
+              title="Continuer →"
+              onPress={() => setStep("amount")}
+              style={{ flex: 1, backgroundColor: merchantAccentColor, borderRadius: 99 }}
+            />
+          </View>
         </View>
       </ScrollView>
     );
@@ -254,6 +455,7 @@ export default function MerchantScanScreen() {
   // ── Scanner (default) ─────────────────────────────────────────────
   return (
     <View style={[styles.container, { backgroundColor: "#000" }]}>
+      <StatusBar translucent backgroundColor="transparent" />
 
       {Platform.OS === "web" ? (
         <View style={[styles.webFallback, { backgroundColor: colors.background, paddingTop: topPad + 12 }]}>
@@ -384,24 +586,135 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  preview: {
+  btnRow: { flexDirection: "row", gap: 12, marginTop: 8 },
+  // ── Amount screen ──────────────────────────────────────────────
+  amountCustomerRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    padding: 12,
-    marginBottom: 8,
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingTop: 4,
+    paddingBottom: 12,
   },
-  previewText: { fontSize: 15 },
-  btnRow: { flexDirection: "row", gap: 12, marginTop: 8 },
-  successIcon: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+  miniAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
   },
-  successTitle: { fontSize: 24, textAlign: "center" },
-  successMsg: { fontSize: 16, textAlign: "center", lineHeight: 24 },
+  miniInitial: { fontSize: 15 },
+  miniName: { fontSize: 15 },
+  miniPoints: { fontSize: 12, marginTop: 1 },
+  amountBox: {
+    marginHorizontal: 20,
+    borderWidth: 2,
+    borderRadius: 16,
+    paddingVertical: 24,
+    paddingHorizontal: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+  },
+  amountValue: {
+    fontSize: 48,
+    textAlign: "center",
+    letterSpacing: -1,
+  },
+  keypad: {
+    paddingHorizontal: 20,
+    gap: 8,
+    marginBottom: 16,
+  },
+  keypadRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  keypadBtn: {
+    flex: 1,
+    height: 62,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  keypadLabel: {
+    fontSize: 24,
+  },
+  quickRow: {
+    flexDirection: "row",
+    paddingHorizontal: 20,
+    gap: 8,
+    marginBottom: 16,
+  },
+  quickPill: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderRadius: 99,
+    paddingVertical: 8,
+    alignItems: "center",
+  },
+  quickLabel: { fontSize: 13 },
+  multSection: {
+    paddingHorizontal: 20,
+    marginBottom: 16,
+    gap: 8,
+  },
+  multLabel: { fontSize: 13, marginBottom: 2 },
+  multRow: {
+    flexDirection: "row",
+    gap: 6,
+    flexWrap: "wrap",
+  },
+  multPill: {
+    borderWidth: 1.5,
+    borderRadius: 99,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    minWidth: 44,
+  },
+  multPillLabel: { fontSize: 13 },
+  summary: {
+    marginHorizontal: 20,
+    padding: 16,
+    gap: 0,
+    marginBottom: 4,
+  },
+  summaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 10,
+  },
+  summaryDivider: { height: 1 },
+  summaryKey: { fontSize: 14 },
+  summaryVal: { fontSize: 16 },
+  validateBtn: {
+    borderRadius: 99,
+    paddingVertical: 18,
+    alignItems: "center",
+  },
+  validateLabel: {
+    color: "#fff",
+    fontSize: 17,
+  },
+  // ── Success ────────────────────────────────────────────────────
+  successCircle: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: "rgba(255,255,255,0.95)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 32,
+  },
+  successTitle: {
+    color: "#fff",
+    fontSize: 22,
+    textAlign: "center",
+    lineHeight: 32,
+  },
+  // ── Camera ─────────────────────────────────────────────────────
   cameraTopBar: {
     position: "absolute",
     top: 0,
