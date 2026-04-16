@@ -9,6 +9,7 @@ import {
   Alert,
   Platform,
   Keyboard,
+  KeyboardAvoidingView,
   TouchableWithoutFeedback,
 } from "react-native";
 import { useTranslation } from "react-i18next";
@@ -88,7 +89,7 @@ export default function MerchantCustomersScreen() {
       <FlatList
         data={filtered}
         keyExtractor={(c) => c.id}
-        keyboardDismissMode="on-drag"
+        keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
         onScrollBeginDrag={Keyboard.dismiss}
         renderItem={({ item }) => (
@@ -128,7 +129,6 @@ export default function MerchantCustomersScreen() {
           </Card>
         )}
         contentContainerStyle={[styles.list, { paddingBottom: 100 }]}
-        scrollEnabled={!!filtered.length}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Feather name="users" size={40} color={colors.mutedForeground} />
@@ -140,6 +140,10 @@ export default function MerchantCustomersScreen() {
       />
 
       <Modal visible={!!selectedCust} transparent animationType="slide">
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, { backgroundColor: colors.card, borderRadius: colors.radius * 2 }]}>
             <Text style={[styles.modalTitle, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
@@ -176,6 +180,7 @@ export default function MerchantCustomersScreen() {
             />
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
     </TouchableWithoutFeedback>
