@@ -29,7 +29,7 @@ const CATEGORY_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
   other: "star",
 };
 
-const STATUSBAR_HEIGHT = Platform.OS === "ios" ? 44 : (StatusBar.currentHeight ?? 0);
+const STATUS_BAR_HEIGHT = Platform.OS === "ios" ? 54 : (StatusBar.currentHeight ?? 24);
 
 function ZelligeOverlay({ width, height }: { width: number; height: number }) {
   const s = 22;
@@ -91,7 +91,7 @@ export default function CustomerHomeScreen() {
   const currentPoints = customer?.totalPoints ?? 0;
   const progress = Math.min(1, currentPoints / Math.max(1, nextTarget));
 
-  const topPad = Platform.OS === "web" ? 67 : STATUSBAR_HEIGHT;
+  const topPad = Platform.OS === "web" ? 67 : STATUS_BAR_HEIGHT;
   const bottomPad = Platform.OS === "web" ? 34 : 0;
   const heroPatternHeight = topPad + 240;
 
@@ -116,7 +116,7 @@ export default function CustomerHomeScreen() {
         colors={["#C85A17", "#E67E22", "#7B2D8B"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 0.3, y: 1 }}
-        style={[styles.hero, { paddingTop: topPad + 20 }]}
+        style={[styles.hero, { paddingTop: topPad }]}
       >
         <ZelligeOverlay width={width} height={heroPatternHeight} />
 

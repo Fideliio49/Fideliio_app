@@ -18,7 +18,7 @@ import { TransactionRow } from "@/components/TransactionRow";
 import { Card } from "@/components/ui/Card";
 import { Feather } from "@expo/vector-icons";
 
-const STATUSBAR_HEIGHT = Platform.OS === "ios" ? 44 : (StatusBar.currentHeight ?? 0);
+const STATUS_BAR_HEIGHT = Platform.OS === "ios" ? 54 : (StatusBar.currentHeight ?? 24);
 
 export default function MerchantHomeScreen() {
   const colors = useColors();
@@ -29,7 +29,7 @@ export default function MerchantHomeScreen() {
   const merchant = user ? getMerchantByUserId(user.id) : null;
   const transactions = merchant ? getMerchantTransactions(merchant.id).slice(0, 8) : [];
 
-  const topPad = Platform.OS === "web" ? 67 : STATUSBAR_HEIGHT;
+  const topPad = Platform.OS === "web" ? 67 : STATUS_BAR_HEIGHT;
 
   useFocusEffect(
     useCallback(() => {
@@ -52,7 +52,7 @@ export default function MerchantHomeScreen() {
         colors={["#2C3E8C", merchantAccentColor, "#00B4D8"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 0.4, y: 1 }}
-        style={[styles.hero, { paddingTop: topPad + 16 }]}
+        style={[styles.hero, { paddingTop: topPad }]}
       >
         <Text style={[styles.greeting, { fontFamily: "Inter_400Regular" }]}>
           Bonjour, {user?.firstName} 👋

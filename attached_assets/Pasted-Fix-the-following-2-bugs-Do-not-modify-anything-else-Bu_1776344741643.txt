@@ -1,0 +1,69 @@
+Fix the following 2 bugs. Do not modify anything else.
+
+Bug 1 — CRITICAL : Status bar (time, battery, network) still overlapping on BOTH home screens :
+The problem persists on both customer and merchant home screens despite previous fix attempts. The root cause is that the gradient container does not extend behind the native status bar.
+Apply this definitive fix on BOTH screens :
+javascriptimport { StatusBar, Platform, Dimensions } from 'react-native';
+import { getStatusBarHeight } from 'react-native-status-bar-height';
+// OR if not available :
+const STATUS_BAR_HEIGHT = Platform.OS === 'ios' ? 54 : StatusBar.currentHeight ?? 24;
+
+At the root of App.tsx or the main navigator, add :
+
+javascript<StatusBar
+  translucent={true}
+  backgroundColor="transparent"
+  barStyle="light-content"
+/>
+
+On the customer home screen gradient container :
+
+javascript<LinearGradient
+  colors={['#C85A17', '#E67E22', '#7B2D8B']}
+  style={{
+    paddingTop: STATUS_BAR_HEIGHT,
+    paddingHorizontal: 20,
+    paddingBottom: 32,
+  }}
+>
+
+On the merchant dashboard gradient container :
+
+javascript<LinearGradient
+  colors={['#2C3E8C', '#2D9CDB', '#00B4D8']}
+  style={{
+    paddingTop: STATUS_BAR_HEIGHT,
+    paddingHorizontal: 20,
+    paddingBottom: 32,
+  }}
+>
+
+The outer screen wrapper must be a plain <View style={{ flex: 1, backgroundColor: '#C85A17' }}> for customer and <View style={{ flex: 1, backgroundColor: '#2C3E8C' }}> for merchant — NOT a SafeAreaView
+Remove any existing SafeAreaView wrapping these two screens entirely
+Do NOT add top padding or margin anywhere else — only inside the LinearGradient via paddingTop: STATUS_BAR_HEIGHT
+This must be tested on both iOS and Android
+
+
+Bug 2 — "Presque là !" section was NOT added to customer home screen :
+The previous prompt to add this section was not applied. Add it now between the header and "Récompenses disponibles" :
+
+Section title row : "🏪 Presque là !" bold 17px left + "Voir tous" accent color right
+Query all merchants where progress_percent >= 80 : (customer_points / next_reward_threshold) * 100
+Show maximum 3 cards sorted by progress descending
+Hide section completely if no merchant meets the 80% threshold
+
+Each card :
+
+White card (dark mode : #1E1E1E), border-radius 16px, border 0.5px
+Left : merchant category icon in 40px rounded square
+Center : merchant name bold 14px + reward name gray 12px
+Right : points remaining in accent color bold + "restants" gray 11px
+Bottom : progress bar — gray track, gradient fill (accent → gold #F9A602), percentage label right-aligned
+🔥 badge top-right if progress >= 95%
+
+On card tap : navigate to merchant detail page
+Final home screen order from top to bottom :
+1. Gradient header (points + progress bar)
+2. "Presque là !" section (if applicable)
+3. "Récompenses disponibles"
+4. "Activité récente"
