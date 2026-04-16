@@ -1,0 +1,70 @@
+Apply the following visual improvements to the customer home screen and add a theme settings option in the profile screen. Do not modify any other screens.
+
+Fix 1 — Customer home screen : fill the white gap at the top and redesign the header :
+
+The current header stops abruptly leaving a white/empty space — fix this by extending the gradient hero section to fill the full top area including the status bar (use SafeAreaView with background color matching the gradient top color)
+Redesign the header section with this layout (full bleed, no white gap) :
+
+Background : gradient from terracotta #C85A17 → burnt orange #E67E22 → soft purple #7B2D8B (top to bottom)
+Top row : "Bonjour, [Prénom] 👋" in white, 16px, opacity 0.9
+Points display : large gold number #F9A602, bold, 48px + "points" in white, 18px beside it
+Below : "Prochaine récompense dans" label in white opacity 0.75, 12px
+Progress bar : gold #F9A602 fill on dark semi-transparent track, rounded, height 8px
+Progress label right-aligned : "50 / 200" in white, 12px
+Add a subtle Moroccan-inspired geometric pattern (zellige-like) as a faint overlay on the gradient (opacity 0.07, white lines)
+Bottom of header : smooth wave or diagonal cut into the white content area below (use SVG or borderBottomLeftRadius trick)
+
+
+Redesign the "Activité récente" section :
+
+Title "Activité récente" in dark #1a1a2e, bold, 17px + "Voir tous" in terracotta #C85A17 right-aligned
+Empty state : replace the flat activity icon with a more friendly illustration — centered icon (gift or star in gold #F9A602), text "Aucune transaction pour le moment" in gray, 14px
+When transactions exist : each transaction row as a card with left colored dot (gold for earned, red for redeemed), merchant name bold, points in gold #F9A602 or red, date in gray
+
+
+Bottom navigation bar :
+
+Active tab icon and label : terracotta #C85A17
+Inactive : gray #9E9E9E
+Background : white, top border 0.5px gray
+
+
+
+
+Fix 2 — Add theme & color settings in the Profile screen :
+
+Add a new section in the profile screen titled "Apparence" with these two options :
+
+Option 1 — Light / Dark mode toggle :
+
+Row with sun icon (light) and moon icon (dark)
+Toggle switch, styled in terracotta #C85A17 when active
+Switching instantly applies dark or light theme across the entire app
+Dark mode colors : background #121212, cards #1E1E1E, text white, accents unchanged (terracotta, gold, Majorelle blue)
+Save preference in AsyncStorage and apply on next app launch
+
+Option 2 — Accent color picker :
+
+Label : "Couleur principale"
+Display 5 color swatches in a row (circular, 36px each, with a checkmark on selected) :
+
+Terracotta #C85A17 (default)
+Bleu Majorelle #2D9CDB
+Or #F9A602
+Vert sauge #5C8A5A
+Violet #7B2D8B
+
+
+Selected color becomes the new accent across the app : buttons, active nav tab, progress bar fill, points color, links
+Save selected color in AsyncStorage and persist across sessions
+
+
+Global color rules to apply now across the whole customer side :
+
+Primary action buttons (ex: "Continuer", "Scanner", "Valider") : terracotta #C85A17, white text, border-radius 99px
+Points and rewards values : gold #F9A602, bold
+Links and secondary actions : Bleu Majorelle #2D9CDB
+Success states : green #27AE60
+Error states : red #E74C3C
+Card backgrounds : white with 0.5px border #E0E0E0, border-radius 16px
+Do not use heavy Moroccan clichés (no tajine icons, no carpet patterns) — keep it subtle and modern

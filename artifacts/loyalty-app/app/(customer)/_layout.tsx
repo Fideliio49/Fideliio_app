@@ -48,13 +48,13 @@ function ClassicTabLayout() {
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.mutedForeground,
+        tabBarInactiveTintColor: "#9E9E9E",
         headerShown: false,
         tabBarStyle: {
           position: "absolute",
-          backgroundColor: isIOS ? "transparent" : colors.background,
-          borderTopWidth: isWeb ? 1 : 0,
-          borderTopColor: colors.border,
+          backgroundColor: isIOS ? "transparent" : "#FFFFFF",
+          borderTopWidth: 0.5,
+          borderTopColor: "#E0E0E0",
           elevation: 0,
           height: isWeb ? 84 : 60,
         },

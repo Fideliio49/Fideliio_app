@@ -5,6 +5,15 @@ import i18n, { applyRTL } from "@/i18n";
 
 export type Language = "fr" | "ar" | "en";
 export type UserRole = "customer" | "merchant";
+export type ColorTheme = "light" | "dark";
+
+export const ACCENT_COLORS = [
+  { key: "terracotta", value: "#C85A17" },
+  { key: "majorelleBlue", value: "#2D9CDB" },
+  { key: "gold", value: "#F9A602" },
+  { key: "sageGreen", value: "#5C8A5A" },
+  { key: "violet", value: "#7B2D8B" },
+];
 
 export interface User {
   id: string;
@@ -26,10 +35,14 @@ interface AppContextType {
   language: Language;
   isRTL: boolean;
   isOnboarded: boolean;
+  colorTheme: ColorTheme;
+  accentColor: string;
   setLanguage: (lang: Language) => Promise<void>;
   setUser: (user: User | null) => void;
   logout: () => Promise<void>;
   completeOnboarding: () => Promise<void>;
+  setColorTheme: (theme: ColorTheme) => Promise<void>;
+  setAccentColor: (color: string) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -38,13 +51,19 @@ const STORAGE_KEYS = {
   USER: "@loyalty_user",
   LANGUAGE: "@loyalty_language",
   ONBOARDED: "@loyalty_onboarded",
+  CUSTOMER_THEME: "@customer_theme",
+  ACCENT_COLOR: "@accent_color",
 };
+
+const DEFAULT_ACCENT = "#C85A17";
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUserState] = useState<User | null>(null);
   const [language, setLanguageState] = useState<Language>("fr");
   const [isOnboarded, setIsOnboarded] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [colorTheme, setColorThemeState] = useState<ColorTheme>("light");
+  const [accentColor, setAccentColorState] = useState(DEFAULT_ACCENT);
 
   const isRTL = language === "ar";
 
@@ -54,11 +73,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   async function loadStoredData() {
     try {
-      const [storedUser, storedLang, storedOnboarded] = await Promise.all([
-        AsyncStorage.getItem(STORAGE_KEYS.USER),
-        AsyncStorage.getItem(STORAGE_KEYS.LANGUAGE),
-        AsyncStorage.getItem(STORAGE_KEYS.ONBOARDED),
-      ]);
+      const [storedUser, storedLang, storedOnboarded, storedTheme, storedAccent] =
+        await Promise.all([
+          AsyncStorage.getItem(STORAGE_KEYS.USER),
+          AsyncStorage.getItem(STORAGE_KEYS.LANGUAGE),
+          AsyncStorage.getItem(STORAGE_KEYS.ONBOARDED),
+          AsyncStorage.getItem(STORAGE_KEYS.CUSTOMER_THEME),
+          AsyncStorage.getItem(STORAGE_KEYS.ACCENT_COLOR),
+        ]);
 
       if (storedLang) {
         const lang = storedLang as Language;
@@ -66,14 +88,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         i18n.changeLanguage(lang);
         applyRTL(lang);
       }
-
-      if (storedUser) {
-        setUserState(JSON.parse(storedUser));
-      }
-
-      if (storedOnboarded === "true") {
-        setIsOnboarded(true);
-      }
+      if (storedUser) setUserState(JSON.parse(storedUser));
+      if (storedOnboarded === "true") setIsOnboarded(true);
+      if (storedTheme) setColorThemeState(storedTheme as ColorTheme);
+      if (storedAccent) setAccentColorState(storedAccent);
     } catch (e) {
       console.warn("Error loading stored data:", e);
     } finally {
@@ -86,7 +104,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await i18n.changeLanguage(lang);
     applyRTL(lang);
     await AsyncStorage.setItem(STORAGE_KEYS.LANGUAGE, lang);
-
     if (user) {
       const updatedUser = { ...user, language: lang };
       setUserState(updatedUser);
@@ -113,6 +130,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await AsyncStorage.setItem(STORAGE_KEYS.ONBOARDED, "true");
   }
 
+  async function setColorTheme(theme: ColorTheme) {
+    setColorThemeState(theme);
+    await AsyncStorage.setItem(STORAGE_KEYS.CUSTOMER_THEME, theme);
+  }
+
+  async function setAccentColor(color: string) {
+    setAccentColorState(color);
+    await AsyncStorage.setItem(STORAGE_KEYS.ACCENT_COLOR, color);
+  }
+
   if (isLoading) return null;
 
   return (
@@ -122,10 +149,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         language,
         isRTL,
         isOnboarded,
+        colorTheme,
+        accentColor,
         setLanguage,
         setUser,
         logout,
         completeOnboarding,
+        setColorTheme,
+        setAccentColor,
       }}
     >
       {children}
