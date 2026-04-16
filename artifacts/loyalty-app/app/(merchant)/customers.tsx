@@ -67,7 +67,6 @@ export default function MerchantCustomersScreen() {
   }
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPad + 12, borderBottomColor: colors.border }]}>
         <Text style={[styles.title, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
@@ -174,7 +173,6 @@ export default function MerchantCustomersScreen() {
         </View>
       </Modal>
     </View>
-    </TouchableWithoutFeedback>
   );
 }
 

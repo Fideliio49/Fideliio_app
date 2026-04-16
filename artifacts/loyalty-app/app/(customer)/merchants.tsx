@@ -39,7 +39,6 @@ export default function MerchantsScreen() {
   });
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPad + 12, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
         <Text style={[styles.title, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
@@ -87,7 +86,6 @@ export default function MerchantsScreen() {
         }
       />
     </View>
-    </TouchableWithoutFeedback>
   );
 }
 

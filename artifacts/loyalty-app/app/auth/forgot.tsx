@@ -42,7 +42,6 @@ export default function ForgotScreen() {
   }
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <View style={[styles.container, { backgroundColor: "#fff" }]}>
       <KeyboardAwareScrollView
         contentContainerStyle={[styles.scroll, { paddingTop: Platform.OS === "web" ? 80 : 60 }]}
@@ -109,7 +108,6 @@ export default function ForgotScreen() {
         )}
       </KeyboardAwareScrollView>
     </View>
-    </TouchableWithoutFeedback>
   );
 }
 

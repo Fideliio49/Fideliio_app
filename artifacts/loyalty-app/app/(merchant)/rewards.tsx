@@ -76,7 +76,6 @@ export default function MerchantRewardsScreen() {
   }
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPad + 12, borderBottomColor: colors.border }]}>
         <View style={styles.headerRow}>
@@ -212,7 +211,6 @@ export default function MerchantRewardsScreen() {
         </View>
       </Modal>
     </View>
-    </TouchableWithoutFeedback>
   );
 }
 

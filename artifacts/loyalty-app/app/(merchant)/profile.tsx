@@ -169,7 +169,6 @@ export default function MerchantProfileScreen() {
   ];
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: colors.background }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -501,7 +500,6 @@ export default function MerchantProfileScreen() {
         </View>
       )}
     </KeyboardAvoidingView>
-    </TouchableWithoutFeedback>
   );
 }
 
