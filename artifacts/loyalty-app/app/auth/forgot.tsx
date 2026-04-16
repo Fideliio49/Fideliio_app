@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   Alert,
   Platform,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useTranslation } from "react-i18next";
@@ -40,10 +42,12 @@ export default function ForgotScreen() {
   }
 
   return (
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <View style={[styles.container, { backgroundColor: "#fff" }]}>
       <KeyboardAwareScrollView
         contentContainerStyle={[styles.scroll, { paddingTop: Platform.OS === "web" ? 80 : 60 }]}
         keyboardShouldPersistTaps="handled"
+        onScrollBeginDrag={Keyboard.dismiss}
         bottomOffset={20}
         showsVerticalScrollIndicator={false}
       >
@@ -105,6 +109,7 @@ export default function ForgotScreen() {
         )}
       </KeyboardAwareScrollView>
     </View>
+    </TouchableWithoutFeedback>
   );
 }
 

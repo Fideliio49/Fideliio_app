@@ -5,6 +5,8 @@ import {
   StyleSheet,
   FlatList,
   Platform,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from "react-native";
 import { useTranslation } from "react-i18next";
 import { Feather } from "@expo/vector-icons";
@@ -37,6 +39,7 @@ export default function MerchantsScreen() {
   });
 
   return (
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPad + 12, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
         <Text style={[styles.title, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
@@ -69,6 +72,8 @@ export default function MerchantsScreen() {
       <FlatList
         data={filtered}
         keyExtractor={(m) => m.id}
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
         renderItem={({ item }) => <MerchantCard merchant={item} />}
         contentContainerStyle={[styles.list, { paddingBottom: 100 }]}
         scrollEnabled={filtered.length > 0}
@@ -82,6 +87,7 @@ export default function MerchantsScreen() {
         }
       />
     </View>
+    </TouchableWithoutFeedback>
   );
 }
 

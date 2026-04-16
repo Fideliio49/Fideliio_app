@@ -89,10 +89,12 @@ export default function RegisterScreen() {
   }
 
   return (
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <View style={[styles.container, { backgroundColor: "#fff" }]}>
       <KeyboardAwareScrollView
         contentContainerStyle={[styles.scroll, { paddingTop: Platform.OS === "web" ? 80 : 60 }]}
         keyboardShouldPersistTaps="handled"
+        onScrollBeginDrag={Keyboard.dismiss}
         bottomOffset={20}
         showsVerticalScrollIndicator={false}
       >
@@ -274,6 +276,7 @@ export default function RegisterScreen() {
         </TouchableOpacity>
       </KeyboardAwareScrollView>
     </View>
+    </TouchableWithoutFeedback>
   );
 }
 

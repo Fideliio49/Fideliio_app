@@ -10,6 +10,8 @@ import {
   Alert,
   Platform,
   ScrollView,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from "react-native";
 import { useTranslation } from "react-i18next";
 import { Feather } from "@expo/vector-icons";
@@ -74,6 +76,7 @@ export default function MerchantRewardsScreen() {
   }
 
   return (
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPad + 12, borderBottomColor: colors.border }]}>
         <View style={styles.headerRow}>
@@ -151,7 +154,7 @@ export default function MerchantRewardsScreen() {
                 <Feather name="x" size={22} color={colors.mutedForeground} />
               </TouchableOpacity>
             </View>
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" onScrollBeginDrag={Keyboard.dismiss}>
               <Input
                 label={t("rewards.rewardName")}
                 placeholder="Ex: Free coffee"
@@ -209,6 +212,7 @@ export default function MerchantRewardsScreen() {
         </View>
       </Modal>
     </View>
+    </TouchableWithoutFeedback>
   );
 }
 
