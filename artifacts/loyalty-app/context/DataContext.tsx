@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { supabase } from "@/lib/supabase";
 
 export interface Transaction {
   id: string;
@@ -99,49 +99,98 @@ interface DataContextType {
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
-const KEYS = {
-  TRANSACTIONS: "@loyalty_transactions",
-  REWARDS: "@loyalty_rewards",
-  REDEMPTIONS: "@loyalty_redemptions",
-  MERCHANTS: "@loyalty_merchants",
-  CUSTOMERS: "@loyalty_customers",
-};
-
 function getTier(points: number): "bronze" | "silver" | "gold" {
   if (points >= 5000) return "gold";
   if (points >= 1000) return "silver";
   return "bronze";
 }
 
+function uid(): string {
+  return Date.now().toString() + Math.random().toString(36).substr(2, 6);
+}
+
 function generateQrCode(prefix: string): string {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let result = "";
-  for (let i = 0; i < 8; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
+  for (let i = 0; i < 8; i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
   return `${prefix}-${result}`;
 }
 
-const DEMO_MERCHANTS: MerchantData[] = [
-  { id: "m1", userId: "u_m1", businessName: "Café Atlas", category: "restaurant", pointsRate: 1, totalCustomers: 42, pointsThisMonth: 3200, rewardsRedeemed: 8, qrCode: "FID-MERCH-CAFATLAS" },
-  { id: "m2", userId: "u_m2", businessName: "Boutique Lina", category: "clothing", pointsRate: 2, totalCustomers: 28, pointsThisMonth: 1800, rewardsRedeemed: 5, qrCode: "FID-MERCH-BOUTLINA" },
-  { id: "m3", userId: "u_m3", businessName: "Salon Zara", category: "hairSalon", pointsRate: 1, totalCustomers: 35, pointsThisMonth: 2400, rewardsRedeemed: 12, qrCode: "FID-MERCH-SALNZARA" },
-  { id: "m4", userId: "u_m4", businessName: "Hôtel Riad", category: "hotel", pointsRate: 3, totalCustomers: 15, pointsThisMonth: 5000, rewardsRedeemed: 3, qrCode: "FID-MERCH-HOTELRIAD" },
-];
+// ── Row mappers ──────────────────────────────────────────────────────────────
 
-const DEMO_REWARDS: Reward[] = [
-  { id: "r1", merchantId: "m1", merchantName: "Café Atlas", name: "Café gratuit", pointsRequired: 200, rewardType: "freeProduct", isActive: true },
-  { id: "r2", merchantId: "m1", merchantName: "Café Atlas", name: "10% de réduction", pointsRequired: 500, rewardType: "discount", isActive: true },
-  { id: "r3", merchantId: "m2", merchantName: "Boutique Lina", name: "20% sur tout", pointsRequired: 1000, rewardType: "discount", isActive: true },
-  { id: "r4", merchantId: "m3", merchantName: "Salon Zara", name: "Coupe gratuite", pointsRequired: 800, rewardType: "freeService", isActive: true },
-  { id: "r5", merchantId: "m4", merchantName: "Hôtel Riad", name: "Nuit offerte", pointsRequired: 3000, rewardType: "freeService", isActive: true },
-];
+function rowToMerchant(r: any): MerchantData {
+  return {
+    id: r.id,
+    userId: r.user_id,
+    businessName: r.business_name,
+    category: r.category,
+    logoUrl: r.logo_url ?? undefined,
+    pointsRate: r.points_rate,
+    totalCustomers: r.total_customers,
+    pointsThisMonth: r.points_this_month,
+    rewardsRedeemed: r.rewards_redeemed,
+    qrCode: r.qr_code ?? undefined,
+  };
+}
+
+function rowToCustomer(r: any): CustomerData {
+  return {
+    id: r.id,
+    userId: r.user_id,
+    firstName: r.first_name,
+    lastName: r.last_name,
+    phone: r.phone ?? undefined,
+    email: r.email ?? undefined,
+    totalPoints: r.total_points,
+    tier: r.tier,
+    qrCode: r.qr_code ?? undefined,
+  };
+}
+
+function rowToReward(r: any): Reward {
+  return {
+    id: r.id,
+    merchantId: r.merchant_id,
+    merchantName: r.merchant_name ?? undefined,
+    name: r.name,
+    pointsRequired: r.points_required,
+    rewardType: r.reward_type,
+    isActive: r.is_active,
+    expiryDate: r.expiry_date ?? undefined,
+  };
+}
+
+function rowToTransaction(r: any): Transaction {
+  return {
+    id: r.id,
+    customerId: r.customer_id,
+    merchantId: r.merchant_id,
+    merchantName: r.merchant_name,
+    customerName: r.customer_name ?? undefined,
+    amount: r.amount,
+    pointsEarned: r.points_earned,
+    createdAt: r.created_at,
+  };
+}
+
+function rowToRedemption(r: any): Redemption {
+  return {
+    id: r.id,
+    customerId: r.customer_id,
+    rewardId: r.reward_id,
+    rewardName: r.reward_name,
+    merchantName: r.merchant_name,
+    redeemedAt: r.redeemed_at,
+  };
+}
+
+// ── Provider ─────────────────────────────────────────────────────────────────
 
 export function DataProvider({ children }: { children: ReactNode }) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [rewards, setRewards] = useState<Reward[]>(DEMO_REWARDS);
+  const [rewards, setRewards] = useState<Reward[]>([]);
   const [redemptions, setRedemptions] = useState<Redemption[]>([]);
-  const [merchants, setMerchants] = useState<MerchantData[]>(DEMO_MERCHANTS);
+  const [merchants, setMerchants] = useState<MerchantData[]>([]);
   const [customers, setCustomers] = useState<CustomerData[]>([]);
 
   useEffect(() => {
@@ -150,122 +199,112 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   async function loadData() {
     try {
-      const [t, r, red, m, c] = await Promise.all([
-        AsyncStorage.getItem(KEYS.TRANSACTIONS),
-        AsyncStorage.getItem(KEYS.REWARDS),
-        AsyncStorage.getItem(KEYS.REDEMPTIONS),
-        AsyncStorage.getItem(KEYS.MERCHANTS),
-        AsyncStorage.getItem(KEYS.CUSTOMERS),
+      const [{ data: m }, { data: c }, { data: r }, { data: t }, { data: red }] = await Promise.all([
+        supabase.from("merchants").select("*").order("created_at"),
+        supabase.from("customers").select("*").order("created_at"),
+        supabase.from("rewards").select("*").order("created_at"),
+        supabase.from("transactions").select("*").order("created_at", { ascending: false }),
+        supabase.from("redemptions").select("*").order("redeemed_at", { ascending: false }),
       ]);
-      if (t) setTransactions(JSON.parse(t));
-      if (r) setRewards(JSON.parse(r));
-      if (red) setRedemptions(JSON.parse(red));
-
-      // Migrate merchants: ensure qrCode exists for all records
-      if (m) {
-        const parsed: MerchantData[] = JSON.parse(m);
-        let changed = false;
-        const migrated = parsed.map((item) => {
-          if (!item.qrCode) {
-            changed = true;
-            return { ...item, qrCode: generateQrCode("FID-MERCH") };
-          }
-          return item;
-        });
-        setMerchants(migrated);
-        if (changed) await persist(KEYS.MERCHANTS, migrated);
-      }
-
-      // Migrate customers: ensure qrCode exists for all records
-      if (c) {
-        const parsed: CustomerData[] = JSON.parse(c);
-        let changed = false;
-        const migrated = parsed.map((item) => {
-          if (!item.qrCode) {
-            changed = true;
-            return { ...item, qrCode: generateQrCode("FID-CUST") };
-          }
-          return item;
-        });
-        setCustomers(migrated);
-        if (changed) await persist(KEYS.CUSTOMERS, migrated);
-      }
-    } catch {}
-  }
-
-  async function persist<T>(key: string, data: T) {
-    await AsyncStorage.setItem(key, JSON.stringify(data));
+      if (m) setMerchants(m.map(rowToMerchant));
+      if (c) setCustomers(c.map(rowToCustomer));
+      if (r) setRewards(r.map(rowToReward));
+      if (t) setTransactions(t.map(rowToTransaction));
+      if (red) setRedemptions(red.map(rowToRedemption));
+    } catch (e) {
+      console.warn("Supabase loadData error:", e);
+    }
   }
 
   async function addTransaction(t: Omit<Transaction, "id" | "createdAt">) {
-    const newT: Transaction = {
-      ...t,
-      id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
-      createdAt: new Date().toISOString(),
-    };
-    const updated = [newT, ...transactions];
-    setTransactions(updated);
-    await persist(KEYS.TRANSACTIONS, updated);
+    const newId = uid();
+    const createdAt = new Date().toISOString();
+    const { error } = await supabase.from("transactions").insert({
+      id: newId,
+      customer_id: t.customerId,
+      merchant_id: t.merchantId,
+      merchant_name: t.merchantName,
+      customer_name: t.customerName ?? null,
+      amount: t.amount,
+      points_earned: t.pointsEarned,
+      created_at: createdAt,
+    });
+    if (error) { console.warn("addTransaction error:", error); return; }
 
+    const newT: Transaction = { ...t, id: newId, createdAt };
+    setTransactions((prev) => [newT, ...prev]);
+
+    // Update customer total_points in DB + memory
     const custIdx = customers.findIndex((c) => c.id === t.customerId);
     if (custIdx !== -1) {
-      const updated2 = [...customers];
-      const newPoints = updated2[custIdx].totalPoints + t.pointsEarned;
-      updated2[custIdx] = { ...updated2[custIdx], totalPoints: newPoints, tier: getTier(newPoints) };
-      setCustomers(updated2);
-      await persist(KEYS.CUSTOMERS, updated2);
-    }
-
-    const merIdx = merchants.findIndex((m) => m.id === t.merchantId);
-    if (merIdx !== -1) {
-      const updated3 = [...merchants];
-      updated3[merIdx] = {
-        ...updated3[merIdx],
-        pointsThisMonth: updated3[merIdx].pointsThisMonth + t.pointsEarned,
-      };
-      setMerchants(updated3);
-      await persist(KEYS.MERCHANTS, updated3);
+      const newPoints = customers[custIdx].totalPoints + t.pointsEarned;
+      const newTier = getTier(newPoints);
+      await supabase.from("customers").update({ total_points: newPoints, tier: newTier }).eq("id", t.customerId);
+      setCustomers((prev) => prev.map((c) => c.id === t.customerId ? { ...c, totalPoints: newPoints, tier: newTier } : c));
     }
   }
 
   async function addReward(r: Omit<Reward, "id">) {
-    const newR: Reward = { ...r, id: Date.now().toString() + Math.random().toString(36).substr(2, 6) };
-    const updated = [...rewards, newR];
-    setRewards(updated);
-    await persist(KEYS.REWARDS, updated);
+    const newId = uid();
+    const { error } = await supabase.from("rewards").insert({
+      id: newId,
+      merchant_id: r.merchantId,
+      merchant_name: r.merchantName ?? null,
+      name: r.name,
+      points_required: r.pointsRequired,
+      reward_type: r.rewardType,
+      is_active: r.isActive,
+      expiry_date: r.expiryDate ?? null,
+    });
+    if (error) { console.warn("addReward error:", error); return; }
+    setRewards((prev) => [...prev, { ...r, id: newId }]);
   }
 
   async function updateReward(id: string, r: Partial<Reward>) {
-    const updated = rewards.map((rw) => (rw.id === id ? { ...rw, ...r } : rw));
-    setRewards(updated);
-    await persist(KEYS.REWARDS, updated);
+    const patch: any = {};
+    if (r.name !== undefined) patch.name = r.name;
+    if (r.merchantId !== undefined) patch.merchant_id = r.merchantId;
+    if (r.merchantName !== undefined) patch.merchant_name = r.merchantName;
+    if (r.pointsRequired !== undefined) patch.points_required = r.pointsRequired;
+    if (r.rewardType !== undefined) patch.reward_type = r.rewardType;
+    if (r.isActive !== undefined) patch.is_active = r.isActive;
+    if (r.expiryDate !== undefined) patch.expiry_date = r.expiryDate;
+    const { error } = await supabase.from("rewards").update(patch).eq("id", id);
+    if (error) { console.warn("updateReward error:", error); return; }
+    setRewards((prev) => prev.map((rw) => rw.id === id ? { ...rw, ...r } : rw));
   }
 
   async function deleteReward(id: string) {
-    const updated = rewards.filter((r) => r.id !== id);
-    setRewards(updated);
-    await persist(KEYS.REWARDS, updated);
+    const { error } = await supabase.from("rewards").delete().eq("id", id);
+    if (error) { console.warn("deleteReward error:", error); return; }
+    setRewards((prev) => prev.filter((r) => r.id !== id));
   }
 
   async function addRedemption(r: Omit<Redemption, "id" | "redeemedAt">) {
-    const newR: Redemption = {
-      ...r,
-      id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
-      redeemedAt: new Date().toISOString(),
-    };
-    const updatedRed = [newR, ...redemptions];
-    setRedemptions(updatedRed);
-    await persist(KEYS.REDEMPTIONS, updatedRed);
+    const newId = uid();
+    const redeemedAt = new Date().toISOString();
+    const { error } = await supabase.from("redemptions").insert({
+      id: newId,
+      customer_id: r.customerId,
+      reward_id: r.rewardId,
+      reward_name: r.rewardName,
+      merchant_name: r.merchantName,
+      redeemed_at: redeemedAt,
+    });
+    if (error) { console.warn("addRedemption error:", error); return; }
 
+    const newR: Redemption = { ...r, id: newId, redeemedAt };
+    setRedemptions((prev) => [newR, ...prev]);
+
+    // Deduct points from customer
     const reward = rewards.find((rw) => rw.id === r.rewardId);
     if (reward) {
       const custIdx = customers.findIndex((c) => c.id === r.customerId);
       if (custIdx !== -1) {
-        const updated2 = [...customers];
-        const newPoints = Math.max(0, updated2[custIdx].totalPoints - reward.pointsRequired);
-        updated2[custIdx] = { ...updated2[custIdx], totalPoints: newPoints, tier: getTier(newPoints) };
-        setCustomers(updated2);
-        await persist(KEYS.CUSTOMERS, updated2);
+        const newPoints = Math.max(0, customers[custIdx].totalPoints - reward.pointsRequired);
+        const newTier = getTier(newPoints);
+        await supabase.from("customers").update({ total_points: newPoints, tier: newTier }).eq("id", r.customerId);
+        setCustomers((prev) => prev.map((c) => c.id === r.customerId ? { ...c, totalPoints: newPoints, tier: newTier } : c));
       }
     }
   }
@@ -273,11 +312,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
   async function adjustCustomerPoints(customerId: string, delta: number) {
     const custIdx = customers.findIndex((c) => c.id === customerId);
     if (custIdx === -1) return;
-    const updated = [...customers];
-    const newPoints = Math.max(0, updated[custIdx].totalPoints + delta);
-    updated[custIdx] = { ...updated[custIdx], totalPoints: newPoints, tier: getTier(newPoints) };
-    setCustomers(updated);
-    await persist(KEYS.CUSTOMERS, updated);
+    const newPoints = Math.max(0, customers[custIdx].totalPoints + delta);
+    const newTier = getTier(newPoints);
+    await supabase.from("customers").update({ total_points: newPoints, tier: newTier }).eq("id", customerId);
+    setCustomers((prev) => prev.map((c) => c.id === customerId ? { ...c, totalPoints: newPoints, tier: newTier } : c));
   }
 
   function getCustomerTransactions(customerId: string) {
@@ -300,7 +338,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       .filter((r) => r.customerId === customerId)
       .reduce((sum, r) => {
         const rw = rewards.find((rw) => rw.id === r.rewardId);
-        return sum + (rw?.merchantId === merchantId ? (rw.pointsRequired) : 0);
+        return sum + (rw?.merchantId === merchantId ? rw.pointsRequired : 0);
       }, 0);
     return Math.max(0, earned - redeemed);
   }
@@ -340,25 +378,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
     for (const t of custTxs) {
       pointsByMerchant[t.merchantId] = (pointsByMerchant[t.merchantId] ?? 0) + t.pointsEarned;
     }
-
     const result: MerchantProgressItem[] = [];
-
     for (const [merchantId, customerPoints] of Object.entries(pointsByMerchant)) {
       if (customerPoints <= 0) continue;
       const merchant = merchants.find((m) => m.id === merchantId);
       if (!merchant) continue;
-
       const merchantRewards = rewards
         .filter((r) => r.merchantId === merchantId && r.isActive)
         .sort((a, b) => a.pointsRequired - b.pointsRequired);
       if (merchantRewards.length === 0) continue;
-
       const nextReward = merchantRewards.find((r) => customerPoints < r.pointsRequired);
       if (!nextReward) continue;
-
       const progressPercent = Math.min(100, (customerPoints / nextReward.pointsRequired) * 100);
       if (progressPercent < 80) continue;
-
       result.push({
         merchantId,
         merchantName: merchant.businessName,
@@ -369,7 +401,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         progressPercent,
       });
     }
-
     return result.sort((a, b) => b.progressPercent - a.progressPercent);
   }
 
@@ -378,15 +409,26 @@ export function DataProvider({ children }: { children: ReactNode }) {
   ): Promise<MerchantData> {
     const newM: MerchantData = {
       ...m,
-      id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
+      id: uid(),
       totalCustomers: 0,
       pointsThisMonth: 0,
       rewardsRedeemed: 0,
       qrCode: generateQrCode("FID-MERCH"),
     };
-    const updated = [...merchants, newM];
-    setMerchants(updated);
-    await persist(KEYS.MERCHANTS, updated);
+    const { error } = await supabase.from("merchants").insert({
+      id: newM.id,
+      user_id: newM.userId,
+      business_name: newM.businessName,
+      category: newM.category,
+      logo_url: newM.logoUrl ?? null,
+      points_rate: newM.pointsRate,
+      total_customers: 0,
+      points_this_month: 0,
+      rewards_redeemed: 0,
+      qr_code: newM.qrCode,
+    });
+    if (error) throw error;
+    setMerchants((prev) => [...prev, newM]);
     return newM;
   }
 
@@ -395,13 +437,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
   ): Promise<CustomerData> {
     const newC: CustomerData = {
       ...c,
-      id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
+      id: uid(),
       tier: getTier(c.totalPoints),
       qrCode: generateQrCode("FID-CUST"),
     };
-    const updated = [...customers, newC];
-    setCustomers(updated);
-    await persist(KEYS.CUSTOMERS, updated);
+    const { error } = await supabase.from("customers").insert({
+      id: newC.id,
+      user_id: newC.userId,
+      first_name: newC.firstName,
+      last_name: newC.lastName,
+      phone: newC.phone ?? null,
+      email: newC.email ?? null,
+      total_points: newC.totalPoints,
+      tier: newC.tier,
+      qr_code: newC.qrCode,
+    });
+    if (error) throw error;
+    setCustomers((prev) => [...prev, newC]);
     return newC;
   }
 
@@ -422,15 +474,31 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }
 
   async function updateMerchant(id: string, data: Partial<MerchantData>) {
-    const updated = merchants.map((m) => (m.id === id ? { ...m, ...data } : m));
-    setMerchants(updated);
-    await persist(KEYS.MERCHANTS, updated);
+    const patch: any = {};
+    if (data.businessName !== undefined) patch.business_name = data.businessName;
+    if (data.category !== undefined) patch.category = data.category;
+    if (data.logoUrl !== undefined) patch.logo_url = data.logoUrl;
+    if (data.pointsRate !== undefined) patch.points_rate = data.pointsRate;
+    if (data.totalCustomers !== undefined) patch.total_customers = data.totalCustomers;
+    if (data.pointsThisMonth !== undefined) patch.points_this_month = data.pointsThisMonth;
+    if (data.rewardsRedeemed !== undefined) patch.rewards_redeemed = data.rewardsRedeemed;
+    if (data.qrCode !== undefined) patch.qr_code = data.qrCode;
+    const { error } = await supabase.from("merchants").update(patch).eq("id", id);
+    if (error) { console.warn("updateMerchant error:", error); return; }
+    setMerchants((prev) => prev.map((m) => m.id === id ? { ...m, ...data } : m));
   }
 
   async function updateCustomerProfile(userId: string, data: Partial<CustomerData>) {
-    const updated = customers.map((c) => (c.userId === userId ? { ...c, ...data } : c));
-    setCustomers(updated);
-    await persist(KEYS.CUSTOMERS, updated);
+    const patch: any = {};
+    if (data.firstName !== undefined) patch.first_name = data.firstName;
+    if (data.lastName !== undefined) patch.last_name = data.lastName;
+    if (data.phone !== undefined) patch.phone = data.phone;
+    if (data.email !== undefined) patch.email = data.email;
+    if (data.totalPoints !== undefined) patch.total_points = data.totalPoints;
+    if (data.tier !== undefined) patch.tier = data.tier;
+    const { error } = await supabase.from("customers").update(patch).eq("user_id", userId);
+    if (error) { console.warn("updateCustomerProfile error:", error); return; }
+    setCustomers((prev) => prev.map((c) => c.userId === userId ? { ...c, ...data } : c));
   }
 
   return (
