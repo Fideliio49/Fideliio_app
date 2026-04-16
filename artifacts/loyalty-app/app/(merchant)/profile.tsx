@@ -174,13 +174,12 @@ export default function MerchantProfileScreen() {
       style={{ flex: 1, backgroundColor: colors.background }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-      <View style={{ flex: 1 }}>
       <ScrollView
         style={[styles.container, { backgroundColor: colors.background }]}
         contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        onScrollBeginDrag={Keyboard.dismiss}
       >
         <View style={[styles.header, { paddingTop: topPad + 12 }]}>
           <Text style={[styles.title, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
@@ -501,8 +500,6 @@ export default function MerchantProfileScreen() {
           <Text style={styles.toastText}>{toastMsg}</Text>
         </View>
       )}
-      </View>
-      </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );
 }
