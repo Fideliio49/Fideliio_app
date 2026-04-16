@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   Alert,
   Platform,
@@ -11,10 +10,10 @@ import {
   Share,
   StatusBar,
   TextInput,
-  KeyboardAvoidingView,
   TouchableWithoutFeedback,
   Keyboard,
 } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import QRCode from "react-native-qrcode-svg";
 import { useTranslation } from "react-i18next";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -22,6 +21,7 @@ import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useApp, Language, ACCENT_COLORS } from "@/context/AppContext";
+import { KEYBOARD_TOOLBAR_ID } from "@/constants/keyboard";
 import { useData } from "@/context/DataContext";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -183,16 +183,13 @@ export default function CustomerProfileScreen() {
   ];
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: colors.background }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
-      <ScrollView
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <KeyboardAwareScrollView
         style={[styles.container, { backgroundColor: colors.background }]}
         contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        onScrollBeginDrag={Keyboard.dismiss}
+        bottomOffset={Platform.OS === "ios" ? 20 : 60}
       >
         <View style={[styles.header, { paddingTop: topPad + 12, backgroundColor: colors.background }]}>
           <Text style={[styles.title, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
@@ -232,6 +229,7 @@ export default function CustomerProfileScreen() {
                   onChangeText={onChange}
                   editable={isEditing}
                   keyboardType={kbType}
+                  inputAccessoryViewID={Platform.OS === "ios" ? KEYBOARD_TOOLBAR_ID : undefined}
                   style={[
                     styles.fieldInput,
                     {
@@ -411,14 +409,14 @@ export default function CustomerProfileScreen() {
             <Text style={styles.deleteAccountText}>Supprimer mon compte</Text>
           </TouchableOpacity>
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {toastVisible && (
         <View style={[styles.toast, { backgroundColor: toastType === "success" ? "#27AE60" : "#E74C3C" }]}>
           <Text style={styles.toastText}>{toastMsg}</Text>
         </View>
       )}
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 

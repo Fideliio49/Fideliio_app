@@ -5,11 +5,11 @@ import {
   StyleSheet,
   Alert,
   Platform,
-  ScrollView,
   TouchableOpacity,
   StatusBar,
   Animated,
 } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
@@ -224,10 +224,11 @@ export default function MerchantScanScreen() {
           </Text>
         </View>
 
-        <ScrollView
+        <KeyboardAwareScrollView
           contentContainerStyle={{ paddingBottom: 32 }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          bottomOffset={Platform.OS === "ios" ? 20 : 60}
         >
           <View style={styles.amountCustomerRow}>
             <View style={[styles.miniAvatar, { backgroundColor: merchantAccentColor + "20" }]}>
@@ -382,7 +383,7 @@ export default function MerchantScanScreen() {
               )}
             </TouchableOpacity>
           </View>
-        </ScrollView>
+        </KeyboardAwareScrollView>
       </View>
     );
   }
@@ -390,7 +391,7 @@ export default function MerchantScanScreen() {
   // ── Confirm (customer found) ─────────────────────────────────────
   if (step === "confirm" && scannedCustomer) {
     return (
-      <ScrollView
+      <KeyboardAwareScrollView
         style={[styles.container, { backgroundColor: colors.background }]}
         contentContainerStyle={{ paddingBottom: 100 }}
       >
@@ -448,7 +449,7 @@ export default function MerchantScanScreen() {
             />
           </View>
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     );
   }
 

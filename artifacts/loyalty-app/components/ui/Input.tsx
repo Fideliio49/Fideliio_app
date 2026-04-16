@@ -7,9 +7,11 @@ import {
   TextInputProps,
   TouchableOpacity,
   ViewStyle,
+  Platform,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
+import { KEYBOARD_TOOLBAR_ID } from "@/constants/keyboard";
 
 interface InputProps extends TextInputProps {
   label?: string;
@@ -54,6 +56,7 @@ export function Input({
         )}
         <TextInput
           {...props}
+          inputAccessoryViewID={Platform.OS === "ios" ? KEYBOARD_TOOLBAR_ID : undefined}
           style={[
             styles.input,
             {

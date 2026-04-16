@@ -9,8 +9,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
+import { Button, InputAccessoryView, Keyboard, Platform, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
+import { KEYBOARD_TOOLBAR_ID } from "@/constants/keyboard";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import "../i18n";
 
@@ -24,18 +26,36 @@ const queryClient = new QueryClient();
 
 function RootLayoutNav() {
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="index" />
-      <Stack.Screen name="onboarding/language" />
-      <Stack.Screen name="onboarding/slides" />
-      <Stack.Screen name="onboarding/role" />
-      <Stack.Screen name="auth/login" />
-      <Stack.Screen name="auth/register" />
-      <Stack.Screen name="auth/forgot" />
-      <Stack.Screen name="auth/role" />
-      <Stack.Screen name="(customer)" />
-      <Stack.Screen name="(merchant)" />
-    </Stack>
+    <>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="onboarding/language" />
+        <Stack.Screen name="onboarding/slides" />
+        <Stack.Screen name="onboarding/role" />
+        <Stack.Screen name="auth/login" />
+        <Stack.Screen name="auth/register" />
+        <Stack.Screen name="auth/forgot" />
+        <Stack.Screen name="auth/role" />
+        <Stack.Screen name="(customer)" />
+        <Stack.Screen name="(merchant)" />
+      </Stack>
+      {Platform.OS === "ios" && (
+        <InputAccessoryView nativeID={KEYBOARD_TOOLBAR_ID}>
+          <View
+            style={{
+              backgroundColor: "#F8F8F8",
+              borderTopWidth: 0.5,
+              borderTopColor: "#E0E0E0",
+              paddingHorizontal: 16,
+              paddingVertical: 6,
+              alignItems: "flex-end",
+            }}
+          >
+            <Button title="Fermer" onPress={Keyboard.dismiss} />
+          </View>
+        </InputAccessoryView>
+      )}
+    </>
   );
 }
 

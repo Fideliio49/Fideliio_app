@@ -9,10 +9,10 @@ import {
   Switch,
   Alert,
   Platform,
-  ScrollView,
   Keyboard,
   TouchableWithoutFeedback,
 } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useTranslation } from "react-i18next";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -153,7 +153,7 @@ export default function MerchantRewardsScreen() {
                 <Feather name="x" size={22} color={colors.mutedForeground} />
               </TouchableOpacity>
             </View>
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" onScrollBeginDrag={Keyboard.dismiss}>
+            <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" bottomOffset={60}>
               <Input
                 label={t("rewards.rewardName")}
                 placeholder="Ex: Free coffee"
@@ -206,7 +206,7 @@ export default function MerchantRewardsScreen() {
                 size="lg"
                 style={{ marginTop: 8 }}
               />
-            </ScrollView>
+            </KeyboardAwareScrollView>
           </View>
         </View>
       </Modal>

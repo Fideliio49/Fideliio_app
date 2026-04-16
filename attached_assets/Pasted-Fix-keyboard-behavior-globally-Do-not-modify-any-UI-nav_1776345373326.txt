@@ -1,0 +1,128 @@
+Fix keyboard behavior globally. Do not modify any UI, navigation, or business logic.
+
+Step 1 — Install the required package :
+bashnpx expo install react-native-keyboard-aware-scroll-view
+
+Step 2 — Android config :
+In android/app/src/main/AndroidManifest.xml, set :
+xml<activity
+  android:windowSoftInputMode="adjustResize"
+  ...
+/>
+In app.json :
+json{
+  "expo": {
+    "android": {
+      "softwareKeyboardLayoutMode": "pan"
+    }
+  }
+}
+
+Step 3 — iOS keyboard toolbar (add ONCE in App.tsx) :
+javascriptimport {
+  InputAccessoryView,
+  Keyboard,
+  Button,
+  View,
+  Platform
+} from 'react-native';
+
+export const KEYBOARD_TOOLBAR_ID = 'globalKeyboardDismiss';
+
+// Add this inside the root App component return, after NavigationContainer :
+{Platform.OS === 'ios' && (
+  <InputAccessoryView nativeID={KEYBOARD_TOOLBAR_ID}>
+    <View style={{
+      backgroundColor: '#F8F8F8',
+      borderTopWidth: 0.5,
+      borderTopColor: '#E0E0E0',
+      paddingHorizontal: 16,
+      paddingVertical: 6,
+      alignItems: 'flex-end'
+    }}>
+      <Button
+        title="Fermer"
+        onPress={Keyboard.dismiss}
+      />
+    </View>
+  </InputAccessoryView>
+)}
+
+Step 4 — Replace ScrollView with KeyboardAwareScrollView on these specific files only :
+Files to update :
+
+MerchantClientsScreen.tsx
+CampaignsScreen.tsx
+ValidateScreen.tsx
+MerchantProfileScreen.tsx
+CustomerProfileScreen.tsx
+LoginScreen.tsx
+RegisterScreen.tsx
+ForgotPasswordScreen.tsx
+
+In each of these files, apply this pattern :
+javascript// REMOVE :
+import { ScrollView } from 'react-native';
+
+// ADD :
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+
+// REPLACE every <ScrollView> with :
+<KeyboardAwareScrollView
+  enableOnAndroid={true}
+  enableAutomaticScroll={true}
+  extraScrollHeight={Platform.OS === 'ios' ? 20 : 60}
+  keyboardShouldPersistTaps="handled"
+  showsVerticalScrollIndicator={false}
+  contentContainerStyle={{ paddingBottom: 100 }}
+>
+  {/* existing content unchanged */}
+</KeyboardAwareScrollView>
+
+Step 5 — Fix MerchantClientsScreen.tsx specifically (FlatList, not ScrollView) :
+javascriptimport {
+  Keyboard,
+  TouchableWithoutFeedback,
+  FlatList
+} from 'react-native';
+
+// Wrap the entire screen content :
+<TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+  <View style={{ flex: 1 }}>
+
+    <TextInput
+      placeholder="Rechercher"
+      returnKeyType="search"
+      blurOnSubmit={true}
+      onSubmitEditing={Keyboard.dismiss}
+      clearButtonMode="while-editing"
+      inputAccessoryViewID={KEYBOARD_TOOLBAR_ID}
+    />
+
+    <FlatList
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
+      onScrollBeginDrag={Keyboard.dismiss}
+      data={clients}
+      renderItem={...}
+    />
+
+  </View>
+</TouchableWithoutFeedback>
+
+Step 6 — Add inputAccessoryViewID to ALL TextInput components across the app :
+javascriptimport { KEYBOARD_TOOLBAR_ID } from '../App';
+
+<TextInput
+  inputAccessoryViewID={KEYBOARD_TOOLBAR_ID}
+  // ... existing props unchanged
+/>
+Apply this to every <TextInput> in every file listed in Step 4.
+
+Rules :
+
+Do NOT change any component logic, state, or API calls
+Do NOT change any styling or colors
+Do NOT modify navigation structure
+Only change import statements and wrapper components as described above
+After applying, run npx expo start --clear to clear cache
