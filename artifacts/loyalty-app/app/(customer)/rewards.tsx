@@ -30,13 +30,14 @@ export default function CustomerRewardsScreen() {
   const allRewards = customer ? getCustomerRewards(customer.id) : [];
   const redemptions = customer ? getCustomerRedemptions(customer.id) : [];
 
-  async function handleRedeem(rewardId: string, merchantName: string, rewardName: string) {
+  async function handleRedeem(rewardId: string, merchantName: string, rewardName: string, merchantId: string) {
     if (!customer) return;
     await addRedemption({
       customerId: customer.id,
       rewardId,
       rewardName,
       merchantName,
+      merchantId,
     });
   }
 
@@ -75,7 +76,7 @@ export default function CustomerRewardsScreen() {
               reward={reward}
               currentPoints={customerPoints}
               merchantName={merchant.businessName}
-              onRedeem={() => handleRedeem(reward.id, merchant.businessName, reward.name)}
+              onRedeem={() => handleRedeem(reward.id, merchant.businessName, reward.name, merchant.id)}
             />
           )}
           contentContainerStyle={[styles.list, { paddingBottom: 100 }]}

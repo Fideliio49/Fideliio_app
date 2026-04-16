@@ -1,0 +1,183 @@
+-- ============================================================
+-- Fideliio — Script complet de mise à jour Supabase
+-- Colle ce script dans : Dashboard → SQL Editor → New query
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- STEP 1 : Nettoyer les politiques RLS existantes
+-- ------------------------------------------------------------
+DROP POLICY IF EXISTS "anon_all_merchants"    ON public.merchants;
+DROP POLICY IF EXISTS "anon_all_customers"    ON public.customers;
+DROP POLICY IF EXISTS "anon_all_rewards"      ON public.rewards;
+DROP POLICY IF EXISTS "anon_all_transactions" ON public.transactions;
+DROP POLICY IF EXISTS "anon_all_redemptions"  ON public.redemptions;
+
+-- ------------------------------------------------------------
+-- STEP 2 : Désactiver RLS complètement (app utilise anon key)
+-- ------------------------------------------------------------
+ALTER TABLE public.merchants    DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.customers    DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rewards      DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.transactions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.redemptions  DISABLE ROW LEVEL SECURITY;
+
+-- ------------------------------------------------------------
+-- STEP 3 : Donner accès complet à anon et authenticated
+-- ------------------------------------------------------------
+GRANT ALL ON public.merchants    TO anon, authenticated;
+GRANT ALL ON public.customers    TO anon, authenticated;
+GRANT ALL ON public.rewards      TO anon, authenticated;
+GRANT ALL ON public.transactions TO anon, authenticated;
+GRANT ALL ON public.redemptions  TO anon, authenticated;
+
+-- ------------------------------------------------------------
+-- STEP 4 : Ajouter les champs manquants
+-- ------------------------------------------------------------
+
+-- Champ multiplier dans transactions
+ALTER TABLE public.transactions
+  ADD COLUMN IF NOT EXISTS multiplier INTEGER NOT NULL DEFAULT 1;
+
+-- Champ merchant_id dans redemptions
+ALTER TABLE public.redemptions
+  ADD COLUMN IF NOT EXISTS merchant_id TEXT
+  REFERENCES public.merchants(id) ON DELETE CASCADE;
+
+-- ------------------------------------------------------------
+-- STEP 5 : Contraintes unicité sur QR codes
+-- ------------------------------------------------------------
+
+-- Customers
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'customers_qr_code_unique'
+  ) THEN
+    ALTER TABLE public.customers
+      ADD CONSTRAINT customers_qr_code_unique UNIQUE (qr_code);
+  END IF;
+END $$;
+
+-- Merchants
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'merchants_qr_code_unique'
+  ) THEN
+    ALTER TABLE public.merchants
+      ADD CONSTRAINT merchants_qr_code_unique UNIQUE (qr_code);
+  END IF;
+END $$;
+
+-- Index pour lookup rapide lors du scan
+CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_qr_code
+  ON public.customers(qr_code);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_merchants_qr_code
+  ON public.merchants(qr_code);
+
+-- ------------------------------------------------------------
+-- STEP 6 : Vues dynamiques pour calcul des points
+-- ------------------------------------------------------------
+
+-- Points par client et par commerce (source de vérité)
+CREATE OR REPLACE VIEW customer_merchant_points AS
+SELECT
+  t.customer_id,
+  t.merchant_id,
+  SUM(t.points_earned)  AS total_points,
+  COUNT(*)              AS visit_count,
+  MAX(t.created_at)     AS last_visit,
+  m.business_name,
+  m.category,
+  m.logo_url,
+  m.points_rate
+FROM public.transactions t
+JOIN public.merchants m ON m.id = t.merchant_id
+GROUP BY
+  t.customer_id,
+  t.merchant_id,
+  m.business_name,
+  m.category,
+  m.logo_url,
+  m.points_rate;
+
+GRANT SELECT ON customer_merchant_points TO anon, authenticated;
+
+-- Points globaux par client (somme tous commerces)
+CREATE OR REPLACE VIEW customer_total_points AS
+SELECT
+  customer_id,
+  SUM(points_earned) AS total_points,
+  COUNT(*)           AS total_transactions
+FROM public.transactions
+GROUP BY customer_id;
+
+GRANT SELECT ON customer_total_points TO anon, authenticated;
+
+-- Progression vers la prochaine récompense par client et par commerce
+CREATE OR REPLACE VIEW customer_reward_progress AS
+SELECT
+  cmp.customer_id,
+  cmp.merchant_id,
+  cmp.business_name,
+  cmp.category,
+  cmp.total_points        AS customer_points,
+  r.id                    AS reward_id,
+  r.name                  AS reward_name,
+  r.points_required       AS reward_threshold,
+  ROUND(
+    (cmp.total_points::NUMERIC / NULLIF(r.points_required, 0)) * 100
+  )                       AS progress_percent,
+  r.points_required - cmp.total_points AS points_remaining
+FROM customer_merchant_points cmp
+JOIN LATERAL (
+  SELECT *
+  FROM public.rewards rw
+  WHERE rw.merchant_id = cmp.merchant_id
+    AND rw.is_active = true
+    AND rw.points_required > cmp.total_points
+  ORDER BY rw.points_required ASC
+  LIMIT 1
+) r ON true;
+
+GRANT SELECT ON customer_reward_progress TO anon, authenticated;
+
+-- ------------------------------------------------------------
+-- STEP 7 : Mettre à jour les QR codes des données demo
+-- ------------------------------------------------------------
+UPDATE public.merchants
+  SET qr_code = 'FID-MERCH-CAFATLAS1'
+  WHERE id = 'm1' AND (qr_code IS NULL OR qr_code = 'FID-MERCH-CAFATLAS');
+
+UPDATE public.merchants
+  SET qr_code = 'FID-MERCH-BOUTLINA1'
+  WHERE id = 'm2' AND (qr_code IS NULL OR qr_code = 'FID-MERCH-BOUTLINA');
+
+UPDATE public.merchants
+  SET qr_code = 'FID-MERCH-SALNZARA1'
+  WHERE id = 'm3' AND (qr_code IS NULL OR qr_code = 'FID-MERCH-SALNZARA');
+
+UPDATE public.merchants
+  SET qr_code = 'FID-MERCH-HOTELRIAD1'
+  WHERE id = 'm4' AND (qr_code IS NULL OR qr_code = 'FID-MERCH-HOTELRIAD');
+
+-- ------------------------------------------------------------
+-- STEP 8 : Vérification finale — afficher le résumé des tables
+-- ------------------------------------------------------------
+SELECT
+  table_name,
+  COUNT(*) AS column_count
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name IN (
+    'merchants',
+    'customers',
+    'rewards',
+    'transactions',
+    'redemptions'
+  )
+GROUP BY table_name
+ORDER BY table_name;

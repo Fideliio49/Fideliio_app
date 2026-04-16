@@ -162,6 +162,7 @@ export default function MerchantScanScreen() {
           customerName: `${scannedCustomer.firstName} ${scannedCustomer.lastName}`,
           amount: effectiveAmount,
           pointsEarned: points,
+          multiplier,
         });
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

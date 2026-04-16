@@ -265,6 +265,7 @@ export default function CustomerHomeScreen() {
                       rewardId: reward.id,
                       rewardName: reward.name,
                       merchantName: merchant.businessName,
+                      merchantId: merchant.id,
                     });
                   }
                 }}

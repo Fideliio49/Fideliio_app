@@ -9,6 +9,7 @@ export interface Transaction {
   customerName?: string;
   amount: number;
   pointsEarned: number;
+  multiplier: number;
   createdAt: string;
 }
 
@@ -29,6 +30,7 @@ export interface Redemption {
   rewardId: string;
   rewardName: string;
   merchantName: string;
+  merchantId: string;
   redeemedAt: string;
 }
 
@@ -169,6 +171,7 @@ function rowToTransaction(r: any): Transaction {
     customerName: r.customer_name ?? undefined,
     amount: r.amount,
     pointsEarned: r.points_earned,
+    multiplier: r.multiplier ?? 1,
     createdAt: r.created_at,
   };
 }
@@ -180,6 +183,7 @@ function rowToRedemption(r: any): Redemption {
     rewardId: r.reward_id,
     rewardName: r.reward_name,
     merchantName: r.merchant_name,
+    merchantId: r.merchant_id ?? "",
     redeemedAt: r.redeemed_at,
   };
 }
@@ -227,11 +231,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       customer_name: t.customerName ?? null,
       amount: t.amount,
       points_earned: t.pointsEarned,
+      multiplier: t.multiplier ?? 1,
       created_at: createdAt,
     });
     if (error) { console.warn("addTransaction error:", error); return; }
 
-    const newT: Transaction = { ...t, id: newId, createdAt };
+    const newT: Transaction = { ...t, id: newId, createdAt, multiplier: t.multiplier ?? 1 };
     setTransactions((prev) => [newT, ...prev]);
 
     // Update customer total_points in DB + memory
@@ -289,11 +294,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       reward_id: r.rewardId,
       reward_name: r.rewardName,
       merchant_name: r.merchantName,
+      merchant_id: r.merchantId || null,
       redeemed_at: redeemedAt,
     });
     if (error) { console.warn("addRedemption error:", error); return; }
 
-    const newR: Redemption = { ...r, id: newId, redeemedAt };
+    const newR: Redemption = { ...r, id: newId, redeemedAt, merchantId: r.merchantId || "" };
     setRedemptions((prev) => [newR, ...prev]);
 
     // Deduct points from customer
