@@ -26,7 +26,7 @@ export default function LoginScreen() {
   const router = useRouter();
   const { role } = useLocalSearchParams<{ role: "customer" | "merchant" }>();
   const { setUser, language, completeOnboarding } = useApp();
-  const { registerCustomer, registerMerchant } = useData();
+  const { registerCustomer, registerMerchant, addTransaction } = useData();
 
   const isMerchant = role === "merchant";
   const accent = isMerchant ? colors.blue : colors.coral;
@@ -78,14 +78,16 @@ export default function LoginScreen() {
       };
 
       if (!isMerchant) {
-        await registerCustomer({
+        const newCustomer = await registerCustomer({
           userId,
           firstName: mockUser.firstName,
           lastName: mockUser.lastName,
           email: mockUser.email,
           phone: mockUser.phone,
-          totalPoints: 250,
+          totalPoints: 0,
         });
+        await addTransaction({ customerId: newCustomer.id, merchantId: "m1", merchantName: "Café Atlas", amount: 180, pointsEarned: 180 });
+        await addTransaction({ customerId: newCustomer.id, merchantId: "m3", merchantName: "Salon Zara", amount: 70, pointsEarned: 70 });
       } else {
         await registerMerchant({
           userId,
