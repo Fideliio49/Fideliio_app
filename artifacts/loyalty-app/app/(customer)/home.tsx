@@ -8,6 +8,7 @@ import {
   Platform,
   useWindowDimensions,
 } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { LinearGradient } from "expo-linear-gradient";
@@ -82,6 +83,8 @@ export default function CustomerHomeScreen() {
   const heroPatternHeight = topPad + 240;
 
   return (
+    <>
+      <StatusBar style="light" backgroundColor="#C85A17" />
     <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={{ paddingBottom: 100 + bottomPad }}
@@ -227,6 +230,7 @@ export default function CustomerHomeScreen() {
         </View>
       </View>
     </ScrollView>
+    </>
   );
 }
 

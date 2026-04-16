@@ -87,8 +87,8 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="scan"
         options={{
-          title: t("customer.scan"),
-          tabBarIcon: ({ color }) => <Feather name="camera" size={22} color={color} />,
+          title: "Mon QR",
+          tabBarIcon: ({ color }) => <Feather name="maximize-2" size={22} color={color} />,
         }}
       />
       <Tabs.Screen

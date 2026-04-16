@@ -1,206 +1,181 @@
-import React, { useState } from "react";
+import React from "react";
 import {
   View,
   Text,
   StyleSheet,
-  Modal,
   TouchableOpacity,
-  Alert,
+  Share,
   Platform,
+  ScrollView,
 } from "react-native";
-import { useTranslation } from "react-i18next";
+import QRCode from "react-native-qrcode-svg";
+import { StatusBar } from "expo-status-bar";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { useData } from "@/context/DataContext";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { Card } from "@/components/ui/Card";
-import * as Haptics from "expo-haptics";
 
-export default function CustomerScanScreen() {
+export default function CustomerQrCodeScreen() {
   const colors = useColors();
-  const { t } = useTranslation();
   const { user } = useApp();
-  const { merchants, getCustomerByUserId, addTransaction } = useData();
+  const { getCustomerByUserId } = useData();
   const insets = useSafeAreaInsets();
 
-  const [code, setCode] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [successModal, setSuccessModal] = useState(false);
-  const [earnedPoints, setEarnedPoints] = useState(0);
-  const [merchantName, setMerchantName] = useState("");
-
+  const customer = user ? getCustomerByUserId(user.id) : null;
+  const qrCodeValue = customer?.qrCode ?? `FID-CUST-${user?.id ?? "UNKNOWN"}`;
   const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const bottomPad = Platform.OS === "web" ? 34 : 0;
 
-  async function handleValidate() {
-    if (!code.trim()) {
-      Alert.alert("", "Please enter a merchant code");
-      return;
-    }
-
-    const merchant = merchants.find(
-      (m) => m.id === code.trim() || m.businessName.toLowerCase() === code.trim().toLowerCase()
-    ) ?? merchants[0];
-
-    if (!merchant) {
-      Alert.alert("", "Merchant not found");
-      return;
-    }
-
-    setLoading(true);
+  async function handleShare() {
     try {
-      await new Promise((r) => setTimeout(r, 800));
-      const customer = user ? getCustomerByUserId(user.id) : null;
-      if (!customer) return;
-
-      const amount = 100;
-      const points = amount * merchant.pointsRate;
-
-      await addTransaction({
-        customerId: customer.id,
-        merchantId: merchant.id,
-        merchantName: merchant.businessName,
-        customerName: `${user?.firstName} ${user?.lastName}`,
-        amount,
-        pointsEarned: points,
+      await Share.share({
+        message: `Mon code Fideliio : ${qrCodeValue}`,
       });
-
-      setEarnedPoints(points);
-      setMerchantName(merchant.businessName);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setSuccessModal(true);
-      setCode("");
-    } catch {
-      Alert.alert("Error", "Failed to validate purchase");
-    } finally {
-      setLoading(false);
-    }
+    } catch {}
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: topPad + 12 }]}>
-        <Text style={[styles.title, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
-          {t("scan.title")}
+    <ScrollView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      contentContainerStyle={[styles.scroll, { paddingTop: topPad + 12, paddingBottom: 100 + bottomPad }]}
+      showsVerticalScrollIndicator={false}
+    >
+      <StatusBar style="dark" />
+
+      <Text
+        style={[styles.title, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}
+      >
+        Mon QR Code
+      </Text>
+      <Text
+        style={[styles.subtitle, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}
+      >
+        Présentez ce code lors de chaque achat
+      </Text>
+
+      <View style={[styles.card, { backgroundColor: colors.card, shadowColor: "#000" }]}>
+        <View style={styles.qrWrap}>
+          <QRCode
+            value={qrCodeValue}
+            size={220}
+            color="#1a1a2e"
+            backgroundColor="white"
+          />
+        </View>
+
+        <Text
+          style={[styles.userName, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}
+        >
+          {user?.firstName} {user?.lastName}
+        </Text>
+
+        <View style={styles.pointsPill}>
+          <Feather name="star" size={14} color="#F9A602" />
+          <Text
+            style={[styles.pointsText, { color: "#F9A602", fontFamily: "Inter_700Bold" }]}
+          >
+            {customer?.totalPoints ?? 0} points
+          </Text>
+        </View>
+
+        <Text
+          style={[styles.codeText, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}
+        >
+          {qrCodeValue}
         </Text>
       </View>
 
-      <View style={styles.scanArea}>
-        <View style={[styles.qrFrame, { borderColor: colors.primary }]}>
-          <Feather name="camera" size={64} color={colors.primary} />
-          <Text style={[styles.qrHint, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
-            {t("scan.title")}
-          </Text>
-        </View>
+      <View
+        style={[styles.hintBox, { backgroundColor: colors.primary + "12", borderColor: colors.primary + "30" }]}
+      >
+        <Feather name="info" size={16} color={colors.primary} />
+        <Text
+          style={[styles.hintText, { color: colors.primary, fontFamily: "Inter_400Regular" }]}
+        >
+          Le marchand scannera ce QR code pour valider votre achat et créditer vos points.
+        </Text>
       </View>
 
-      <View style={styles.manualWrap}>
-        <View style={styles.dividerRow}>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <Text style={[styles.dividerText, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
-            {t("scan.manualCode")}
-          </Text>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-        </View>
-
-        <Card style={styles.card}>
-          <Input
-            label={t("scan.merchantCode")}
-            placeholder="Ex: m1 or Café Atlas"
-            value={code}
-            onChangeText={setCode}
-            leftIcon="hash"
-          />
-          <Button
-            title={t("scan.confirm")}
-            onPress={handleValidate}
-            loading={loading}
-            size="lg"
-          />
-        </Card>
-      </View>
-
-      <Modal visible={successModal} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: colors.card, borderRadius: colors.radius * 2 }]}>
-            <View style={[styles.successIcon, { backgroundColor: colors.green100 }]}>
-              <Feather name="check-circle" size={48} color={colors.secondary} />
-            </View>
-            <Text style={[styles.successTitle, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
-              {t("scan.scanSuccess")}
-            </Text>
-            <Text style={[styles.successSub, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
-              {merchantName}
-            </Text>
-            <Text style={[styles.successPoints, { color: colors.secondary, fontFamily: "Inter_700Bold" }]}>
-              +{earnedPoints} pts
-            </Text>
-            <Text style={[styles.successPtsLabel, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
-              {t("scan.pointsEarned")}
-            </Text>
-            <Button
-              title={t("common.close")}
-              onPress={() => setSuccessModal(false)}
-              size="md"
-              style={{ marginTop: 8 }}
-            />
-          </View>
-        </View>
-      </Modal>
-    </View>
+      <TouchableOpacity
+        onPress={handleShare}
+        style={[
+          styles.shareBtn,
+          {
+            backgroundColor: colors.primary + "12",
+            borderColor: colors.primary + "40",
+            borderRadius: colors.radius,
+          },
+        ]}
+        activeOpacity={0.8}
+      >
+        <Feather name="share-2" size={18} color={colors.primary} />
+        <Text
+          style={[styles.shareBtnText, { color: colors.primary, fontFamily: "Inter_600SemiBold" }]}
+        >
+          Partager mon QR Code
+        </Text>
+      </TouchableOpacity>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { paddingHorizontal: 20, paddingBottom: 12 },
-  title: { fontSize: 24 },
-  scanArea: { flex: 1, alignItems: "center", justifyContent: "center", padding: 40 },
-  qrFrame: {
-    width: 220,
-    height: 220,
-    borderWidth: 3,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-  },
-  qrHint: { fontSize: 14 },
-  manualWrap: { padding: 20, paddingBottom: 100 },
-  dividerRow: { flexDirection: "row", alignItems: "center", marginBottom: 20, gap: 10 },
-  divider: { flex: 1, height: 1 },
-  dividerText: { fontSize: 13 },
-  card: {},
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 24,
-  },
-  modalCard: {
-    padding: 32,
-    alignItems: "center",
+  scroll: { paddingHorizontal: 24, alignItems: "center" },
+  title: { fontSize: 24, marginBottom: 6, alignSelf: "flex-start" },
+  subtitle: { fontSize: 14, marginBottom: 28, alignSelf: "flex-start" },
+  card: {
     width: "100%",
-    gap: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 24,
-    elevation: 10,
-  },
-  successIcon: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
+    borderRadius: 24,
     alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8,
+    paddingVertical: 32,
+    paddingHorizontal: 24,
+    gap: 12,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 4,
+    marginBottom: 20,
   },
-  successTitle: { fontSize: 22 },
-  successSub: { fontSize: 15 },
-  successPoints: { fontSize: 48, marginTop: 8 },
-  successPtsLabel: { fontSize: 15 },
+  qrWrap: {
+    padding: 16,
+    backgroundColor: "white",
+    borderRadius: 16,
+    marginBottom: 4,
+  },
+  userName: { fontSize: 20 },
+  pointsPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    backgroundColor: "#FFF8E1",
+    borderRadius: 99,
+  },
+  pointsText: { fontSize: 15 },
+  codeText: { fontSize: 12, letterSpacing: 1.5, marginTop: 4 },
+  hintBox: {
+    flexDirection: "row",
+    gap: 10,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    width: "100%",
+    marginBottom: 16,
+    alignItems: "flex-start",
+  },
+  hintText: { flex: 1, fontSize: 13, lineHeight: 19 },
+  shareBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderWidth: 1.5,
+    width: "100%",
+    justifyContent: "center",
+  },
+  shareBtnText: { fontSize: 15 },
 });

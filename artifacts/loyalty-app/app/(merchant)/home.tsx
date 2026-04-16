@@ -6,6 +6,7 @@ import {
   ScrollView,
   Platform,
 } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import { useTranslation } from "react-i18next";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -30,6 +31,8 @@ export default function MerchantHomeScreen() {
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
   return (
+    <>
+      <StatusBar style="light" backgroundColor={colors.secondary} />
     <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={{ paddingBottom: 100 }}
@@ -100,6 +103,7 @@ export default function MerchantHomeScreen() {
         </Card>
       </View>
     </ScrollView>
+    </>
   );
 }
 

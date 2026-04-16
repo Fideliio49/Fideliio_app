@@ -8,7 +8,9 @@ import {
   Alert,
   Platform,
   Switch,
+  Share,
 } from "react-native";
+import QRCode from "react-native-qrcode-svg";
 import { useTranslation } from "react-i18next";
 import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
@@ -70,6 +72,13 @@ export default function CustomerProfileScreen() {
   }
 
   const tierColor = TIER_COLORS[customer?.tier ?? "bronze"];
+  const qrCodeValue = customer?.qrCode ?? `FID-CUST-${user?.id ?? "UNKNOWN"}`;
+
+  async function handleShareQr() {
+    try {
+      await Share.share({ message: `Mon code Fideliio : ${qrCodeValue}` });
+    } catch {}
+  }
 
   return (
     <ScrollView
@@ -167,6 +176,36 @@ export default function CustomerProfileScreen() {
               {customer?.totalPoints ?? 0} {t("customer.points")}
             </Text>
           </View>
+        </Card>
+
+        <Card style={styles.qrCard}>
+          <Text
+            style={[styles.sectionTitle, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]}
+          >
+            Mon QR Code
+          </Text>
+          <View style={styles.qrWrap}>
+            <QRCode
+              value={qrCodeValue}
+              size={150}
+              color="#1a1a2e"
+              backgroundColor="white"
+            />
+          </View>
+          <Text
+            style={[styles.qrCodeText, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}
+          >
+            {qrCodeValue}
+          </Text>
+          <TouchableOpacity
+            onPress={handleShareQr}
+            style={[styles.qrShareBtn, { borderColor: colors.primary + "40", borderRadius: colors.radius }]}
+          >
+            <Feather name="share-2" size={15} color={colors.primary} />
+            <Text style={[styles.qrShareText, { color: colors.primary, fontFamily: "Inter_600SemiBold" }]}>
+              Partager
+            </Text>
+          </TouchableOpacity>
         </Card>
 
         <Card style={styles.section}>
@@ -364,6 +403,18 @@ const styles = StyleSheet.create({
   tierPoints: { fontSize: 15 },
   section: {},
   sectionTitle: { fontSize: 15, marginBottom: 14 },
+  qrCard: { alignItems: "center", gap: 10 },
+  qrWrap: { padding: 14, backgroundColor: "white", borderRadius: 12 },
+  qrCodeText: { fontSize: 11, letterSpacing: 1.2 },
+  qrShareBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    borderWidth: 1.5,
+  },
+  qrShareText: { fontSize: 14 },
   langRow: { flexDirection: "row", gap: 8 },
   langBtn: {
     flex: 1,

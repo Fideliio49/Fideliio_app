@@ -1,0 +1,63 @@
+Fix the following issues. Do not modify anything else.
+
+Bug 1 — Status bar overlap (time, battery, wifi showing over the header) :
+
+The app header is overlapping the native status bar (time, battery, signal icons)
+Fix : wrap every colored header inside a SafeAreaView with the same background color as the top of the gradient
+Add StatusBar component with barStyle="light-content" and backgroundColor matching the top gradient color
+All screen content must start BELOW the status bar, never behind it
+Apply this fix on every screen that has a colored header — both customer AND merchant sides
+
+
+Bug 2 — Completely rework the scan logic : the merchant scans, not the customer :
+New flow to implement :
+Step 1 — Merchant registration :
+
+When a merchant registers, automatically generate a unique QR code linked to their account
+This QR code is displayed in their dashboard under "My QR Code" — they can show it or print it to place at the checkout counter
+
+Step 2 — Customer registration :
+
+When a customer registers, automatically generate a unique personal QR code linked to their account
+Format : FID-CUST-XXXX (generated with uuid or nanoid)
+This QR code is permanently visible on the customer home screen and in their profile — they show it to the merchant at every purchase
+
+Step 3 — Purchase validation (merchant side) :
+
+Merchant opens the "Validate" tab in their app
+They scan the customer's QR code using the device camera
+The app identifies the customer and displays their name + current points balance
+Merchant enters the purchase amount in DH
+The app automatically calculates points to credit based on the configured rate (e.g. 1 DH = 1 pt)
+Merchant taps "Validate" — points are instantly credited to the customer's account
+A confirmation message appears : "✓ 120 points added to Yasmine B."
+
+Changes to make in the app :
+
+Customer side :
+
+Remove the "Scanner" tab from the bottom navigation
+Replace it with a "My QR Code" tab that displays the customer's personal QR code in large format, with their name and total points displayed below it
+Add a "Share" or "Save" button below the QR code so the customer can download or share it
+
+
+Merchant side :
+
+The "Validate" tab must open the device camera directly to scan the customer QR code (not a text input form)
+After a successful scan, show customer info (name, current points) before asking for the purchase amount
+Add a "My QR Code" section in the merchant settings screen showing their own merchant QR code (for customers to potentially reference their store)
+
+
+Database updates :
+
+Add a qr_code field (unique string) to both customers and merchants tables
+QR code for customers format : FID-CUST-XXXX
+QR code for merchants format : FID-MERCH-XXXX
+Generate QR code automatically on account creation and store it in the database
+
+
+
+
+New scan flow summary :
+Customer shows their QR code → Merchant scans it → Enters purchase amount → Taps Validate → Points credited instantly to customer account
+

@@ -42,6 +42,7 @@ export interface MerchantData {
   totalCustomers: number;
   pointsThisMonth: number;
   rewardsRedeemed: number;
+  qrCode?: string;
 }
 
 export interface CustomerData {
@@ -53,6 +54,7 @@ export interface CustomerData {
   email?: string;
   totalPoints: number;
   tier: "bronze" | "silver" | "gold";
+  qrCode?: string;
 }
 
 interface DataContextType {
@@ -72,11 +74,12 @@ interface DataContextType {
   getMerchantRewards: (merchantId: string) => Reward[];
   getCustomerRewards: (customerId: string) => { reward: Reward; merchant: MerchantData }[];
   getCustomerRedemptions: (customerId: string) => Redemption[];
-  registerMerchant: (m: Omit<MerchantData, "id" | "totalCustomers" | "pointsThisMonth" | "rewardsRedeemed">) => Promise<MerchantData>;
-  registerCustomer: (c: Omit<CustomerData, "id" | "tier">) => Promise<CustomerData>;
+  registerMerchant: (m: Omit<MerchantData, "id" | "totalCustomers" | "pointsThisMonth" | "rewardsRedeemed" | "qrCode">) => Promise<MerchantData>;
+  registerCustomer: (c: Omit<CustomerData, "id" | "tier" | "qrCode">) => Promise<CustomerData>;
   getMerchantById: (id: string) => MerchantData | undefined;
   getCustomerByUserId: (userId: string) => CustomerData | undefined;
   getMerchantByUserId: (userId: string) => MerchantData | undefined;
+  getCustomerByQrCode: (qrCode: string) => CustomerData | undefined;
   updateMerchant: (id: string, data: Partial<MerchantData>) => Promise<void>;
   updateCustomerProfile: (userId: string, data: Partial<CustomerData>) => Promise<void>;
 }
@@ -97,11 +100,20 @@ function getTier(points: number): "bronze" | "silver" | "gold" {
   return "bronze";
 }
 
+function generateQrCode(prefix: string): string {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let result = "";
+  for (let i = 0; i < 8; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return `${prefix}-${result}`;
+}
+
 const DEMO_MERCHANTS: MerchantData[] = [
-  { id: "m1", userId: "u_m1", businessName: "Café Atlas", category: "restaurant", pointsRate: 1, totalCustomers: 42, pointsThisMonth: 3200, rewardsRedeemed: 8 },
-  { id: "m2", userId: "u_m2", businessName: "Boutique Lina", category: "clothing", pointsRate: 2, totalCustomers: 28, pointsThisMonth: 1800, rewardsRedeemed: 5 },
-  { id: "m3", userId: "u_m3", businessName: "Salon Zara", category: "hairSalon", pointsRate: 1, totalCustomers: 35, pointsThisMonth: 2400, rewardsRedeemed: 12 },
-  { id: "m4", userId: "u_m4", businessName: "Hôtel Riad", category: "hotel", pointsRate: 3, totalCustomers: 15, pointsThisMonth: 5000, rewardsRedeemed: 3 },
+  { id: "m1", userId: "u_m1", businessName: "Café Atlas", category: "restaurant", pointsRate: 1, totalCustomers: 42, pointsThisMonth: 3200, rewardsRedeemed: 8, qrCode: "FID-MERCH-CAFATLAS" },
+  { id: "m2", userId: "u_m2", businessName: "Boutique Lina", category: "clothing", pointsRate: 2, totalCustomers: 28, pointsThisMonth: 1800, rewardsRedeemed: 5, qrCode: "FID-MERCH-BOUTLINA" },
+  { id: "m3", userId: "u_m3", businessName: "Salon Zara", category: "hairSalon", pointsRate: 1, totalCustomers: 35, pointsThisMonth: 2400, rewardsRedeemed: 12, qrCode: "FID-MERCH-SALNZARA" },
+  { id: "m4", userId: "u_m4", businessName: "Hôtel Riad", category: "hotel", pointsRate: 3, totalCustomers: 15, pointsThisMonth: 5000, rewardsRedeemed: 3, qrCode: "FID-MERCH-HOTELRIAD" },
 ];
 
 const DEMO_REWARDS: Reward[] = [
@@ -135,8 +147,36 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (t) setTransactions(JSON.parse(t));
       if (r) setRewards(JSON.parse(r));
       if (red) setRedemptions(JSON.parse(red));
-      if (m) setMerchants(JSON.parse(m));
-      if (c) setCustomers(JSON.parse(c));
+
+      // Migrate merchants: ensure qrCode exists for all records
+      if (m) {
+        const parsed: MerchantData[] = JSON.parse(m);
+        let changed = false;
+        const migrated = parsed.map((item) => {
+          if (!item.qrCode) {
+            changed = true;
+            return { ...item, qrCode: generateQrCode("FID-MERCH") };
+          }
+          return item;
+        });
+        setMerchants(migrated);
+        if (changed) await persist(KEYS.MERCHANTS, migrated);
+      }
+
+      // Migrate customers: ensure qrCode exists for all records
+      if (c) {
+        const parsed: CustomerData[] = JSON.parse(c);
+        let changed = false;
+        const migrated = parsed.map((item) => {
+          if (!item.qrCode) {
+            changed = true;
+            return { ...item, qrCode: generateQrCode("FID-CUST") };
+          }
+          return item;
+        });
+        setCustomers(migrated);
+        if (changed) await persist(KEYS.CUSTOMERS, migrated);
+      }
     } catch {}
   }
 
@@ -255,13 +295,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return redemptions.filter((r) => r.customerId === customerId);
   }
 
-  async function registerMerchant(m: Omit<MerchantData, "id" | "totalCustomers" | "pointsThisMonth" | "rewardsRedeemed">): Promise<MerchantData> {
+  async function registerMerchant(
+    m: Omit<MerchantData, "id" | "totalCustomers" | "pointsThisMonth" | "rewardsRedeemed" | "qrCode">
+  ): Promise<MerchantData> {
     const newM: MerchantData = {
       ...m,
       id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
       totalCustomers: 0,
       pointsThisMonth: 0,
       rewardsRedeemed: 0,
+      qrCode: generateQrCode("FID-MERCH"),
     };
     const updated = [...merchants, newM];
     setMerchants(updated);
@@ -269,11 +312,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return newM;
   }
 
-  async function registerCustomer(c: Omit<CustomerData, "id" | "tier">): Promise<CustomerData> {
+  async function registerCustomer(
+    c: Omit<CustomerData, "id" | "tier" | "qrCode">
+  ): Promise<CustomerData> {
     const newC: CustomerData = {
       ...c,
       id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
       tier: getTier(c.totalPoints),
+      qrCode: generateQrCode("FID-CUST"),
     };
     const updated = [...customers, newC];
     setCustomers(updated);
@@ -291,6 +337,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   function getMerchantByUserId(userId: string) {
     return merchants.find((m) => m.userId === userId);
+  }
+
+  function getCustomerByQrCode(qrCode: string) {
+    return customers.find((c) => c.qrCode === qrCode);
   }
 
   async function updateMerchant(id: string, data: Partial<MerchantData>) {
@@ -329,6 +379,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         getMerchantById,
         getCustomerByUserId,
         getMerchantByUserId,
+        getCustomerByQrCode,
         updateMerchant,
         updateCustomerProfile,
       }}
