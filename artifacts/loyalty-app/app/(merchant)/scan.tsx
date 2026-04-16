@@ -24,7 +24,7 @@ import * as Haptics from "expo-haptics";
 
 type ScanStep = "scanning" | "confirm" | "amount" | "success";
 
-const QUICK_AMOUNTS = [20, 50, 100, 200];
+const QUICK_AMOUNTS = [5, 10, 20, 50, 100, 200];
 const MULTIPLIERS = [1, 2, 5, 10, 20, 50];
 
 function formatAmount(raw: string): string {

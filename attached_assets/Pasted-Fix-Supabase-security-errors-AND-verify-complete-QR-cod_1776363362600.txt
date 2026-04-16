@@ -1,0 +1,230 @@
+Fix Supabase security errors AND verify complete QR code and points logic. Do not change any UI or styling.
+
+Fix 1 — Enable Row Level Security (RLS) on all tables in Supabase :
+The Supabase Security Advisor is showing 5 critical errors :
+
+public.merchants — RLS Disabled
+public.customers — RLS Disabled
+public.rewards — RLS Disabled
+public.transactions — RLS Disabled
+public.redemptions — RLS Disabled
+
+Run these SQL commands in the Supabase SQL Editor :
+sql-- Enable RLS on all tables
+ALTER TABLE public.merchants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rewards ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.redemptions ENABLE ROW LEVEL SECURITY;
+
+-- Merchants : a merchant can only read/write their own data
+CREATE POLICY "Merchant access own data"
+ON public.merchants
+FOR ALL
+USING (auth.uid() = user_id);
+
+-- Customers : a customer can only read/write their own data
+CREATE POLICY "Customer access own data"
+ON public.customers
+FOR ALL
+USING (auth.uid() = user_id);
+
+-- Transactions : customer can read their own, merchant can read/write their own
+CREATE POLICY "Customer read own transactions"
+ON public.transactions
+FOR SELECT
+USING (
+  customer_id IN (
+    SELECT id FROM public.customers WHERE user_id = auth.uid()
+  )
+);
+
+CREATE POLICY "Merchant write own transactions"
+ON public.transactions
+FOR INSERT
+WITH CHECK (
+  merchant_id IN (
+    SELECT id FROM public.merchants WHERE user_id = auth.uid()
+  )
+);
+
+CREATE POLICY "Merchant read own transactions"
+ON public.transactions
+FOR SELECT
+USING (
+  merchant_id IN (
+    SELECT id FROM public.merchants WHERE user_id = auth.uid()
+  )
+);
+
+-- Rewards : merchant manages their own, customers can read all active rewards
+CREATE POLICY "Merchant manage own rewards"
+ON public.rewards
+FOR ALL
+USING (
+  merchant_id IN (
+    SELECT id FROM public.merchants WHERE user_id = auth.uid()
+  )
+);
+
+CREATE POLICY "Customer read active rewards"
+ON public.rewards
+FOR SELECT
+USING (is_active = true);
+
+-- Redemptions : customer and merchant can read their own
+CREATE POLICY "Customer read own redemptions"
+ON public.redemptions
+FOR ALL
+USING (
+  customer_id IN (
+    SELECT id FROM public.customers WHERE user_id = auth.uid()
+  )
+);
+
+-- Merchants can read all customers (needed for QR scan)
+CREATE POLICY "Merchant read customers for scan"
+ON public.customers
+FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM public.merchants WHERE user_id = auth.uid()
+  )
+);
+
+-- All authenticated users can read merchants list
+CREATE POLICY "Anyone can read merchants"
+ON public.merchants
+FOR SELECT
+USING (auth.role() = 'authenticated');
+
+Fix 2 — Verify and enforce unique QR code generation :
+Run this SQL to verify and add constraints :
+sql-- Verify qr_code field exists and is unique on both tables
+ALTER TABLE public.customers
+  ADD COLUMN IF NOT EXISTS qr_code TEXT UNIQUE;
+
+ALTER TABLE public.merchants
+  ADD COLUMN IF NOT EXISTS qr_code TEXT UNIQUE;
+
+-- Add index for fast QR code lookup during scan
+CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_qr_code
+  ON public.customers(qr_code);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_merchants_qr_code
+  ON public.merchants(qr_code);
+In the app code (RegisterScreen.tsx), verify that on registration :
+javascriptimport { nanoid } from 'nanoid/non-secure';
+
+// Customer registration :
+const customerQrCode = `FID-CUST-${nanoid(8).toUpperCase()}`;
+
+// Merchant registration :
+const merchantQrCode = `FID-MERCH-${nanoid(8).toUpperCase()}`;
+
+// Insert into Supabase immediately at registration — not lazily later
+const { data, error } = await supabase
+  .from('customers') // or 'merchants'
+  .insert({
+    user_id: user.id,
+    qr_code: customerQrCode,
+    created_at: new Date().toISOString()
+  });
+
+Fix 3 — Verify complete scan and points flow end-to-end :
+In ValidateScreen.tsx, verify this exact sequence :
+javascript// Step 1 : merchant scans customer QR code
+const onQRCodeScanned = async (scannedValue) => {
+
+  // Step 2 : find customer by QR code
+  const { data: customer } = await supabase
+    .from('customers')
+    .select('id, user_id, qr_code, profiles(first_name, last_name)')
+    .eq('qr_code', scannedValue)
+    .single();
+
+  if (!customer) {
+    showError('Client non reconnu');
+    return;
+  }
+
+  // Step 3 : show customer info → merchant enters amount
+  setScannedCustomer(customer);
+};
+
+// Step 4 : merchant taps "Valider"
+const onValidate = async () => {
+
+  const merchant = await getCurrentMerchant(); // from auth session
+  const points = purchaseAmount * multiplier * merchant.points_rate;
+
+  // Step 5 : insert transaction with BOTH customer_id AND merchant_id
+  const { error } = await supabase
+    .from('transactions')
+    .insert({
+      customer_id:  scannedCustomer.id,
+      merchant_id:  merchant.id,        // ← logged-in merchant, NOT from QR
+      amount:       purchaseAmount * multiplier,
+      multiplier:   multiplier,
+      points_earned: points,
+      created_at:   new Date().toISOString()
+    });
+
+  if (error) {
+    showError('Erreur lors de la validation');
+    return;
+  }
+
+  showSuccess(`✓ ${points} points ajoutés à ${scannedCustomer.first_name}`);
+};
+
+Fix 4 — After first scan, merchant X must appear in customer A's merchants list :
+In CustomerMerchantsScreen.tsx, the merchants list must be fetched like this :
+javascript// Fetch only merchants where the customer has at least 1 transaction
+const { data: myMerchants } = await supabase
+  .from('transactions')
+  .select(`
+    merchant_id,
+    merchants (
+      id,
+      business_name,
+      category,
+      logo_url,
+      points_rate
+    ),
+    points_earned
+  `)
+  .eq('customer_id', currentCustomer.id);
+
+// Group by merchant and sum points per merchant
+const merchantsWithPoints = groupBy(myMerchants, 'merchant_id')
+  .map(group => ({
+    ...group[0].merchants,
+    my_points: group.reduce((sum, t) => sum + t.points_earned, 0)
+  }));
+This ensures :
+
+First time customer visits merchant X and gets scanned → merchant X appears in their list
+Points shown per merchant card = SUM of points earned at that merchant only
+Each subsequent visit adds more points to that merchant's total
+
+
+Fix 5 — Quick amount buttons must use these exact values :
+In ValidateScreen.tsx :
+javascriptconst QUICK_AMOUNTS = [5, 10, 20, 50, 100, 200];
+
+Display as pill buttons in a scrollable row
+Tapping a button sets the purchase amount instantly
+Merchant can also type a custom amount manually
+Multiplier row below : ×1, ×2, ×5, ×10, ×20, ×50
+Final amount = selected_amount × multiplier
+Points = final_amount × merchant.points_rate
+
+
+Summary of what this fixes :
+✅ RLS enabled on all 5 tables → Supabase security errors resolved
+✅ Unique QR code generated at registration for every customer and merchant
+✅ Merchant X scans Customer A → transaction saved with correct merchant_id
+✅ Merchant X appears in Customer A's merchants list after first scan
+✅ Each scan adds points to Customer A specifically at Merchant X
+✅ Quick amounts : 5, 10, 20, 50, 100, 200 DH

@@ -12,6 +12,7 @@ import { useTranslation } from "react-i18next";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
+import { useApp } from "@/context/AppContext";
 import { useData } from "@/context/DataContext";
 import { Input } from "@/components/ui/Input";
 import { MerchantCard } from "@/components/MerchantCard";
@@ -23,14 +24,24 @@ const CATS = ["all", "restaurant", "clothing", "hairSalon", "hotel", "other"];
 export default function MerchantsScreen() {
   const colors = useColors();
   const { t } = useTranslation();
-  const { merchants } = useData();
+  const { user } = useApp();
+  const { merchants, getCustomerByUserId, getCustomerTransactions } = useData();
   const insets = useSafeAreaInsets();
   const [search, setSearch] = useState("");
   const [cat, setCat] = useState("all");
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
-  const filtered = merchants.filter((m) => {
+  // Only show merchants where this customer has at least 1 transaction
+  const customer = user ? getCustomerByUserId(user.id) : null;
+  const visitedMerchantIds = customer
+    ? new Set(getCustomerTransactions(customer.id).map((t) => t.merchantId))
+    : new Set<string>();
+  const visibleMerchants = customer
+    ? merchants.filter((m) => visitedMerchantIds.has(m.id))
+    : [];
+
+  const filtered = visibleMerchants.filter((m) => {
     const matchSearch =
       search.trim() === "" ||
       m.businessName.toLowerCase().includes(search.toLowerCase());
