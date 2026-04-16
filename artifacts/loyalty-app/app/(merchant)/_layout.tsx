@@ -6,6 +6,7 @@ import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import { Feather } from "@expo/vector-icons";
 import { Platform, StyleSheet, View, useColorScheme } from "react-native";
 import { useColors } from "@/hooks/useColors";
+import { useApp } from "@/context/AppContext";
 import { useTranslation } from "react-i18next";
 
 function NativeTabLayout() {
@@ -39,6 +40,7 @@ function NativeTabLayout() {
 function ClassicTabLayout() {
   const colors = useColors();
   const { t } = useTranslation();
+  const { merchantAccentColor } = useApp();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
   const isIOS = Platform.OS === "ios";
@@ -47,7 +49,7 @@ function ClassicTabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: colors.majorelleBlue,
+        tabBarActiveTintColor: merchantAccentColor,
         tabBarInactiveTintColor: colors.mutedForeground,
         headerShown: false,
         tabBarStyle: {

@@ -8,8 +8,8 @@ export type UserRole = "customer" | "merchant";
 export type ColorTheme = "light" | "dark";
 
 export const ACCENT_COLORS = [
-  { key: "terracotta", value: "#C85A17" },
   { key: "majorelleBlue", value: "#2D9CDB" },
+  { key: "terracotta", value: "#C85A17" },
   { key: "gold", value: "#F9A602" },
   { key: "teal", value: "#00B4D8" },
   { key: "violet", value: "#7B2D8B" },
@@ -37,12 +37,14 @@ interface AppContextType {
   isOnboarded: boolean;
   colorTheme: ColorTheme;
   accentColor: string;
+  merchantAccentColor: string;
   setLanguage: (lang: Language) => Promise<void>;
   setUser: (user: User | null) => void;
   logout: () => Promise<void>;
   completeOnboarding: () => Promise<void>;
   setColorTheme: (theme: ColorTheme) => Promise<void>;
   setAccentColor: (color: string) => Promise<void>;
+  setMerchantAccentColor: (color: string) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -53,9 +55,11 @@ const STORAGE_KEYS = {
   ONBOARDED: "@loyalty_onboarded",
   CUSTOMER_THEME: "@customer_theme",
   ACCENT_COLOR: "@accent_color",
+  MERCHANT_ACCENT_COLOR: "@merchant_accent_color",
 };
 
 const DEFAULT_ACCENT = "#C85A17";
+const DEFAULT_MERCHANT_ACCENT = "#2D9CDB";
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUserState] = useState<User | null>(null);
@@ -64,6 +68,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [colorTheme, setColorThemeState] = useState<ColorTheme>("light");
   const [accentColor, setAccentColorState] = useState(DEFAULT_ACCENT);
+  const [merchantAccentColor, setMerchantAccentColorState] = useState(DEFAULT_MERCHANT_ACCENT);
 
   const isRTL = language === "ar";
 
@@ -73,13 +78,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   async function loadStoredData() {
     try {
-      const [storedUser, storedLang, storedOnboarded, storedTheme, storedAccent] =
+      const [storedUser, storedLang, storedOnboarded, storedTheme, storedAccent, storedMerchantAccent] =
         await Promise.all([
           AsyncStorage.getItem(STORAGE_KEYS.USER),
           AsyncStorage.getItem(STORAGE_KEYS.LANGUAGE),
           AsyncStorage.getItem(STORAGE_KEYS.ONBOARDED),
           AsyncStorage.getItem(STORAGE_KEYS.CUSTOMER_THEME),
           AsyncStorage.getItem(STORAGE_KEYS.ACCENT_COLOR),
+          AsyncStorage.getItem(STORAGE_KEYS.MERCHANT_ACCENT_COLOR),
         ]);
 
       if (storedLang) {
@@ -92,6 +98,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (storedOnboarded === "true") setIsOnboarded(true);
       if (storedTheme) setColorThemeState(storedTheme as ColorTheme);
       if (storedAccent) setAccentColorState(storedAccent);
+      if (storedMerchantAccent) setMerchantAccentColorState(storedMerchantAccent);
     } catch (e) {
       console.warn("Error loading stored data:", e);
     } finally {
@@ -140,6 +147,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await AsyncStorage.setItem(STORAGE_KEYS.ACCENT_COLOR, color);
   }
 
+  async function setMerchantAccentColor(color: string) {
+    setMerchantAccentColorState(color);
+    await AsyncStorage.setItem(STORAGE_KEYS.MERCHANT_ACCENT_COLOR, color);
+  }
+
   if (isLoading) return null;
 
   return (
@@ -151,12 +163,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         isOnboarded,
         colorTheme,
         accentColor,
+        merchantAccentColor,
         setLanguage,
         setUser,
         logout,
         completeOnboarding,
         setColorTheme,
         setAccentColor,
+        setMerchantAccentColor,
       }}
     >
       {children}

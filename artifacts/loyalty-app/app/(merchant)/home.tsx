@@ -10,7 +10,6 @@ import {
 import { useFocusEffect } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { LinearGradient } from "expo-linear-gradient";
-import { useSafeAreaInsets, SafeAreaView } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { useData } from "@/context/DataContext";
@@ -19,36 +18,38 @@ import { TransactionRow } from "@/components/TransactionRow";
 import { Card } from "@/components/ui/Card";
 import { Feather } from "@expo/vector-icons";
 
+const STATUSBAR_HEIGHT = Platform.OS === "ios" ? 44 : (StatusBar.currentHeight ?? 0);
+
 export default function MerchantHomeScreen() {
   const colors = useColors();
   const { t } = useTranslation();
-  const { user } = useApp();
+  const { user, merchantAccentColor } = useApp();
   const { getMerchantByUserId, getMerchantTransactions } = useData();
-  const insets = useSafeAreaInsets();
 
   const merchant = user ? getMerchantByUserId(user.id) : null;
   const transactions = merchant ? getMerchantTransactions(merchant.id).slice(0, 8) : [];
 
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const topPad = Platform.OS === "web" ? 67 : STATUSBAR_HEIGHT;
 
   useFocusEffect(
     useCallback(() => {
       StatusBar.setBarStyle("light-content", true);
       if (Platform.OS === "android") {
-        StatusBar.setBackgroundColor("#2C3E8C", true);
+        StatusBar.setBackgroundColor("transparent", true);
       }
     }, [])
   );
 
   return (
-    <SafeAreaView edges={["left", "right"]} style={{ flex: 1, backgroundColor: "#2C3E8C" }}>
+    <View style={{ flex: 1, backgroundColor: merchantAccentColor }}>
+      <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
     <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={{ paddingBottom: 100 }}
       showsVerticalScrollIndicator={false}
     >
       <LinearGradient
-        colors={["#2C3E8C", "#2D9CDB", "#00B4D8"]}
+        colors={[merchantAccentColor, "#00B4D8"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 0.4, y: 1 }}
         style={[styles.hero, { paddingTop: topPad + 16 }]}
@@ -67,14 +68,14 @@ export default function MerchantHomeScreen() {
             icon="users"
             value={merchant?.totalCustomers ?? 0}
             label={t("merchant.activeCustomers")}
-            color={"#2D9CDB"}
+            color={merchantAccentColor}
             valueColor={"#F9A602"}
           />
           <StatCard
             icon="trending-up"
             value={merchant?.pointsThisMonth ?? 0}
             label={t("merchant.pointsDistributed")}
-            color={"#2D9CDB"}
+            color={merchantAccentColor}
             valueColor={"#F9A602"}
           />
         </View>
@@ -83,14 +84,14 @@ export default function MerchantHomeScreen() {
             icon="gift"
             value={merchant?.rewardsRedeemed ?? 0}
             label={t("merchant.rewardsRedeemed")}
-            color={"#2D9CDB"}
+            color={merchantAccentColor}
             valueColor={"#F9A602"}
           />
           <StatCard
             icon="zap"
             value={`${merchant?.pointsRate ?? 1}x`}
             label="Points rate"
-            color={"#2D9CDB"}
+            color={merchantAccentColor}
             valueColor={"#F9A602"}
           />
         </View>
@@ -118,7 +119,7 @@ export default function MerchantHomeScreen() {
         </Card>
       </View>
     </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 

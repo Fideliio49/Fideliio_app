@@ -14,13 +14,14 @@ import { useTranslation } from "react-i18next";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import Svg, { Path } from "react-native-svg";
-import { useSafeAreaInsets, SafeAreaView } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { useData } from "@/context/DataContext";
 import { RewardCard } from "@/components/RewardCard";
 import { TransactionRow } from "@/components/TransactionRow";
 import { Card } from "@/components/ui/Card";
+
+const STATUSBAR_HEIGHT = Platform.OS === "ios" ? 44 : (StatusBar.currentHeight ?? 0);
 
 function ZelligeOverlay({ width, height }: { width: number; height: number }) {
   const s = 22;
@@ -60,7 +61,6 @@ export default function CustomerHomeScreen() {
     getCustomerRewards,
     addRedemption,
   } = useData();
-  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { width } = useWindowDimensions();
 
@@ -78,7 +78,7 @@ export default function CustomerHomeScreen() {
   const currentPoints = customer?.totalPoints ?? 0;
   const progress = Math.min(1, currentPoints / Math.max(1, nextTarget));
 
-  const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const topPad = Platform.OS === "web" ? 67 : STATUSBAR_HEIGHT;
   const bottomPad = Platform.OS === "web" ? 34 : 0;
   const heroPatternHeight = topPad + 240;
 
@@ -86,13 +86,14 @@ export default function CustomerHomeScreen() {
     useCallback(() => {
       StatusBar.setBarStyle("light-content", true);
       if (Platform.OS === "android") {
-        StatusBar.setBackgroundColor("#C85A17", true);
+        StatusBar.setBackgroundColor("transparent", true);
       }
     }, [])
   );
 
   return (
-    <SafeAreaView edges={["left", "right"]} style={{ flex: 1, backgroundColor: "#C85A17" }}>
+    <View style={{ flex: 1, backgroundColor: "#C85A17" }}>
+      <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
     <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={{ paddingBottom: 100 + bottomPad }}
@@ -238,7 +239,7 @@ export default function CustomerHomeScreen() {
         </View>
       </View>
     </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 

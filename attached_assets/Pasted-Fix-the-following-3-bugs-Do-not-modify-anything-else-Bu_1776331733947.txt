@@ -1,0 +1,63 @@
+Fix the following 3 bugs. Do not modify anything else.
+
+Bug 1 — CRITICAL : Status bar white gap still not fixed on both home screens :
+The problem is visible in image 3 and 4 — there is a clear white/light strip at the very top of the screen above the gradient header on BOTH customer and merchant home screens.
+The root cause is likely that SafeAreaView is adding top padding that is not covered by the gradient. Fix it this way :
+
+Do NOT use SafeAreaView as the outer wrapper on screens with a colored header
+Instead, use a plain View with style={{ flex: 1 }} as the outer wrapper
+Add this at the top of each home screen component :
+
+javascriptimport { StatusBar, Platform } from 'react-native';
+const STATUSBAR_HEIGHT = Platform.OS === 'ios' ? 44 : StatusBar.currentHeight;
+
+Give the gradient header a paddingTop: STATUSBAR_HEIGHT so its content starts below the status bar but the gradient color itself fills the entire top area
+Set StatusBar with translucent={true} and backgroundColor="transparent" on Android
+Set barStyle="light-content" on both screens
+The gradient must fill the FULL screen top — no white gap, no border, no separator
+Apply this fix to :
+
+Customer home screen : top gradient color #C85A17
+Merchant dashboard screen : top gradient color #2C3E8C
+
+
+
+
+Bug 2 — Merchant accent color picker does not apply to the dashboard and all screens :
+When the merchant changes the accent color in the Profile screen, it only partially applies — the dashboard header, buttons, and active nav tab do NOT update.
+Fix :
+
+The selected accent color must be stored in a global ThemeContext (not just local state)
+Every component that uses a color (header gradient top color, button background, active nav tab color, stat numbers, links) must READ from ThemeContext — not hardcoded hex values
+When the merchant selects a new color swatch, call setMerchantAccentColor(color) on the context — this must trigger a re-render of ALL screens instantly
+The merchant dashboard header gradient must update : from selected accent color (top) → teal #00B4D8 (bottom)
+The active bottom nav tab icon and label must use the selected accent color
+Primary buttons (Valider, Enregistrer, etc.) must use the selected accent color
+Save selected color in AsyncStorage under key merchant_accent_color and restore on app launch
+
+
+Bug 3 — Merchant color picker : align style with customer color picker :
+The merchant color swatches currently show in a different style than the customer side. Make them identical :
+
+Same circular swatch size : 36px diameter
+Same checkmark overlay on selected swatch (white checkmark centered)
+Same 5 color options in the same order :
+
+Majorelle blue #2D9CDB (merchant default — pre-selected)
+Terracotta #C85A17
+Gold #F9A602
+Teal #00B4D8
+Violet #7B2D8B
+
+
+Same card container style as customer "Apparence" section
+Same light/dark toggle row style with sun and moon icons
+The only difference allowed : merchant default selected color is Majorelle blue, customer default is terracotta
+
+
+General rules :
+
+Do not regenerate any screen from scratch
+ThemeContext must be shared at the root App.tsx level — not inside individual screens
+All color changes must apply instantly without navigation or restart
+Test that switching from blue → terracotta → gold updates the dashboard header each time

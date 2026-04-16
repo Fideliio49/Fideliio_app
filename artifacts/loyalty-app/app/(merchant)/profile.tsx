@@ -26,7 +26,6 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 
-const MERCHANT_BLUE = "#2D9CDB";
 
 const LANGS: { code: Language; label: string }[] = [
   { code: "fr", label: "Français" },
@@ -39,7 +38,7 @@ const CATEGORY_KEYS = ["restaurant", "clothing", "hairSalon", "hotel", "other"] 
 export default function MerchantProfileScreen() {
   const colors = useColors();
   const { t } = useTranslation();
-  const { user, setUser, language, setLanguage, logout, colorTheme, setColorTheme, accentColor, setAccentColor } = useApp();
+  const { user, setUser, language, setLanguage, logout, colorTheme, setColorTheme, merchantAccentColor, setMerchantAccentColor } = useApp();
   const router = useRouter();
   const { getMerchantByUserId, updateMerchant } = useData();
   const insets = useSafeAreaInsets();
@@ -205,7 +204,7 @@ export default function MerchantProfileScreen() {
                 }}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Feather name={isEditing ? "x" : "edit-2"} size={18} color={MERCHANT_BLUE} />
+                <Feather name={isEditing ? "x" : "edit-2"} size={18} color={merchantAccentColor} />
               </TouchableOpacity>
             </View>
 
@@ -224,7 +223,7 @@ export default function MerchantProfileScreen() {
                     {
                       color: colors.foreground,
                       backgroundColor: isEditing ? colors.card : "transparent",
-                      borderColor: isEditing ? MERCHANT_BLUE : colors.border,
+                      borderColor: isEditing ? merchantAccentColor : colors.border,
                       borderWidth: isEditing ? 1.5 : 1,
                       fontFamily: "Inter_400Regular",
                     },
@@ -247,7 +246,7 @@ export default function MerchantProfileScreen() {
                   {
                     color: colors.foreground,
                     backgroundColor: isEditing ? colors.card : "transparent",
-                    borderColor: isEditing ? MERCHANT_BLUE : colors.border,
+                    borderColor: isEditing ? merchantAccentColor : colors.border,
                     borderWidth: isEditing ? 1.5 : 1,
                     fontFamily: "Inter_400Regular",
                   },
@@ -269,8 +268,8 @@ export default function MerchantProfileScreen() {
                       style={[
                         styles.catChip,
                         {
-                          borderColor: category === key ? MERCHANT_BLUE : colors.border,
-                          backgroundColor: category === key ? MERCHANT_BLUE + "15" : colors.background,
+                          borderColor: category === key ? merchantAccentColor : colors.border,
+                          backgroundColor: category === key ? merchantAccentColor + "15" : colors.background,
                           borderRadius: 20,
                         },
                       ]}
@@ -279,7 +278,7 @@ export default function MerchantProfileScreen() {
                         style={[
                           styles.catChipText,
                           {
-                            color: category === key ? MERCHANT_BLUE : colors.mutedForeground,
+                            color: category === key ? merchantAccentColor : colors.mutedForeground,
                             fontFamily: category === key ? "Inter_600SemiBold" : "Inter_400Regular",
                           },
                         ]}
@@ -304,15 +303,15 @@ export default function MerchantProfileScreen() {
                   onPress={handleSaveInfo}
                   loading={saving}
                   size="sm"
-                  style={{ flex: 1, backgroundColor: MERCHANT_BLUE, borderRadius: 99 }}
+                  style={{ flex: 1, backgroundColor: merchantAccentColor, borderRadius: 99 }}
                 />
               </View>
             )}
           </Card>
 
           <Card style={styles.bizCard}>
-            <View style={[styles.bizIcon, { backgroundColor: MERCHANT_BLUE + "18" }]}>
-              <Feather name="briefcase" size={28} color={MERCHANT_BLUE} />
+            <View style={[styles.bizIcon, { backgroundColor: merchantAccentColor + "18" }]}>
+              <Feather name="briefcase" size={28} color={merchantAccentColor} />
             </View>
             <Text style={[styles.bizName, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
               {merchant?.businessName ?? user?.businessName}
@@ -380,7 +379,7 @@ export default function MerchantProfileScreen() {
               onPress={handleSaveRate}
               loading={savingRate}
               size="sm"
-              style={{ marginTop: 10, alignSelf: "flex-start", backgroundColor: MERCHANT_BLUE, borderRadius: 99 }}
+              style={{ marginTop: 10, alignSelf: "flex-start", backgroundColor: merchantAccentColor, borderRadius: 99 }}
             />
           </Card>
 
@@ -397,8 +396,8 @@ export default function MerchantProfileScreen() {
               <Switch
                 value={notifications}
                 onValueChange={setNotifications}
-                trackColor={{ false: colors.border, true: MERCHANT_BLUE + "80" }}
-                thumbColor={notifications ? MERCHANT_BLUE : colors.mutedForeground}
+                trackColor={{ false: colors.border, true: merchantAccentColor + "80" }}
+                thumbColor={notifications ? merchantAccentColor : colors.mutedForeground}
               />
             </View>
           </Card>
@@ -415,8 +414,8 @@ export default function MerchantProfileScreen() {
                   style={[
                     styles.langBtn,
                     {
-                      borderColor: language === l.code ? MERCHANT_BLUE : colors.border,
-                      backgroundColor: language === l.code ? MERCHANT_BLUE + "15" : colors.background,
+                      borderColor: language === l.code ? merchantAccentColor : colors.border,
+                      backgroundColor: language === l.code ? merchantAccentColor + "15" : colors.background,
                       borderRadius: colors.radius,
                       borderWidth: language === l.code ? 2 : 1,
                     },
@@ -426,7 +425,7 @@ export default function MerchantProfileScreen() {
                     style={[
                       styles.langLabel,
                       {
-                        color: language === l.code ? MERCHANT_BLUE : colors.mutedForeground,
+                        color: language === l.code ? merchantAccentColor : colors.mutedForeground,
                         fontFamily: language === l.code ? "Inter_600SemiBold" : "Inter_400Regular",
                       },
                     ]}
@@ -444,17 +443,17 @@ export default function MerchantProfileScreen() {
             </Text>
             <View style={styles.themeRow}>
               <View style={styles.themeIconRow}>
-                <Feather name="sun" size={18} color={!isDark ? MERCHANT_BLUE : colors.mutedForeground} />
+                <Feather name="sun" size={18} color={!isDark ? merchantAccentColor : colors.mutedForeground} />
                 <Text style={[styles.themeLabel, { color: colors.foreground, fontFamily: "Inter_400Regular" }]}>
                   {isDark ? "Mode sombre" : "Mode clair"}
                 </Text>
-                <Feather name="moon" size={18} color={isDark ? MERCHANT_BLUE : colors.mutedForeground} />
+                <Feather name="moon" size={18} color={isDark ? merchantAccentColor : colors.mutedForeground} />
               </View>
               <Switch
                 value={isDark}
                 onValueChange={(val) => setColorTheme(val ? "dark" : "light")}
-                trackColor={{ false: colors.border, true: MERCHANT_BLUE + "80" }}
-                thumbColor={isDark ? MERCHANT_BLUE : colors.mutedForeground}
+                trackColor={{ false: colors.border, true: merchantAccentColor + "80" }}
+                thumbColor={isDark ? merchantAccentColor : colors.mutedForeground}
               />
             </View>
             <View style={styles.accentSection}>
@@ -463,11 +462,11 @@ export default function MerchantProfileScreen() {
               </Text>
               <View style={styles.swatchRow}>
                 {ACCENT_COLORS.map((swatch) => {
-                  const isSelected = accentColor === swatch.value;
+                  const isSelected = merchantAccentColor === swatch.value;
                   return (
                     <TouchableOpacity
                       key={swatch.key}
-                      onPress={() => setAccentColor(swatch.value)}
+                      onPress={() => setMerchantAccentColor(swatch.value)}
                       style={[
                         styles.swatch,
                         {

@@ -25,7 +25,7 @@ type ScanStep = "scanning" | "confirm" | "success";
 
 export default function MerchantScanScreen() {
   const colors = useColors();
-  const { user, colorTheme } = useApp();
+  const { user, colorTheme, merchantAccentColor } = useApp();
   const { getMerchantByUserId, getCustomerByQrCode, addTransaction } = useData();
   const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
@@ -132,8 +132,8 @@ export default function MerchantScanScreen() {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={[styles.centeredWrap, { paddingTop: topPad + 20 }]}>
-          <View style={[styles.successIcon, { backgroundColor: "#2D9CDB18" }]}>
-            <Feather name="check-circle" size={60} color="#2D9CDB" />
+          <View style={[styles.successIcon, { backgroundColor: merchantAccentColor + "18" }]}>
+            <Feather name="check-circle" size={60} color={merchantAccentColor} />
           </View>
           <Text
             style={[styles.successTitle, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}
@@ -149,7 +149,7 @@ export default function MerchantScanScreen() {
             title="Nouveau scan"
             onPress={handleReset}
             size="lg"
-            style={{ marginTop: 32, minWidth: 200, backgroundColor: "#2D9CDB", borderRadius: 99 }}
+            style={{ marginTop: 32, minWidth: 200, backgroundColor: merchantAccentColor, borderRadius: 99 }}
           />
         </View>
       </View>
@@ -181,10 +181,10 @@ export default function MerchantScanScreen() {
         <View style={styles.content}>
           <Card style={styles.customerCard}>
             <View
-              style={[styles.custAvatar, { backgroundColor: "#2D9CDB20" }]}
+              style={[styles.custAvatar, { backgroundColor: merchantAccentColor + "20" }]}
             >
               <Text
-                style={[styles.custInitial, { color: "#2D9CDB", fontFamily: "Inter_700Bold" }]}
+                style={[styles.custInitial, { color: merchantAccentColor, fontFamily: "Inter_700Bold" }]}
               >
                 {scannedCustomer.firstName[0]}
                 {scannedCustomer.lastName[0]}
@@ -202,8 +202,8 @@ export default function MerchantScanScreen() {
                 {scannedCustomer.totalPoints} points actuels
               </Text>
             </View>
-            <View style={[styles.checkBadge, { backgroundColor: "#2D9CDB18" }]}>
-              <Feather name="check" size={16} color="#2D9CDB" />
+            <View style={[styles.checkBadge, { backgroundColor: merchantAccentColor + "18" }]}>
+              <Feather name="check" size={16} color={merchantAccentColor} />
             </View>
           </Card>
 
@@ -220,12 +220,12 @@ export default function MerchantScanScreen() {
               <View
                 style={[
                   styles.preview,
-                  { backgroundColor: "#2D9CDB18", borderRadius: colors.radius },
+                  { backgroundColor: merchantAccentColor + "18", borderRadius: colors.radius },
                 ]}
               >
-                <Feather name="zap" size={16} color="#2D9CDB" />
+                <Feather name="zap" size={16} color={merchantAccentColor} />
                 <Text
-                  style={[styles.previewText, { color: "#2D9CDB", fontFamily: "Inter_600SemiBold" }]}
+                  style={[styles.previewText, { color: merchantAccentColor, fontFamily: "Inter_600SemiBold" }]}
                 >
                   +{preview} points à créditer
                 </Text>
@@ -242,7 +242,7 @@ export default function MerchantScanScreen() {
                 title="Valider"
                 onPress={handleValidate}
                 loading={loading}
-                style={{ flex: 1, backgroundColor: "#2D9CDB", borderRadius: 99 }}
+                style={{ flex: 1, backgroundColor: merchantAccentColor, borderRadius: 99 }}
               />
             </View>
           </Card>
