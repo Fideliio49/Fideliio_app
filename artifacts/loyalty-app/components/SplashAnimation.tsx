@@ -153,12 +153,13 @@ export function SplashAnimation() {
       {/* Center F card */}
       <Animated.View style={[styles.cardWrap, cardStyle]}>
         <LinearGradient
-          colors={["#FF6B6B", "#FF8E53"]}
+          colors={["#1a1a6e", "#C85A17"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.card}
         >
           <Text style={styles.fLetter}>F</Text>
+          <View style={styles.goldDot} />
         </LinearGradient>
       </Animated.View>
     </View>
@@ -185,7 +186,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   cardWrap: {
-    shadowColor: "#FF6B6B",
+    shadowColor: "#C85A17",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.4,
     shadowRadius: 20,
@@ -203,5 +204,14 @@ const styles = StyleSheet.create({
     fontSize: 64,
     fontFamily: "Inter_700Bold",
     lineHeight: 72,
+  },
+  goldDot: {
+    position: "absolute",
+    bottom: 10,
+    right: 10,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: "#F9A602",
   },
 });

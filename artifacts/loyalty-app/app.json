@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "LoyaltyApp",
-    "slug": "loyalty-app",
+    "name": "Fideliio",
+    "slug": "fideliio",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -18,8 +18,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/icon.png",
-        "backgroundColor": "#7C3AED"
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#1a1a6e"
       }
     },
     "web": {

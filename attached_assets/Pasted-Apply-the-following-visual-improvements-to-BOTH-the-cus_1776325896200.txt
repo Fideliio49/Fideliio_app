@@ -1,0 +1,83 @@
+Apply the following visual improvements to BOTH the customer AND merchant home screens, and add a theme settings option in BOTH profile screens. Do not modify any other screens.
+
+Fix 1 — Customer home screen : fill the white gap and redesign header :
+
+Extend the gradient hero section to fill the full top area including the status bar (SafeAreaView background matching gradient top color)
+Header gradient : terracotta #C85A17 → burnt orange #E67E22 → soft purple #7B2D8B (top to bottom)
+Top row : "Bonjour, [Prénom] 👋" white, 16px, opacity 0.9
+Points display : gold #F9A602, bold, 48px + "points" white, 18px
+Progress bar : gold #F9A602 fill, dark semi-transparent track, rounded, height 8px
+Progress label : "50 / 200" white, 12px, right-aligned
+Subtle geometric zellige-like pattern overlay on gradient (opacity 0.07, white lines)
+Bottom of header : smooth wave cut into white content area below
+"Activité récente" title dark #1a1a2e, bold + "Voir tous" in terracotta #C85A17
+Empty state : gold star/gift icon + "Aucune transaction pour le moment" in gray
+Transaction rows : gold dot for earned points, red dot for redeemed, merchant name bold, points in gold #F9A602
+Bottom nav active tab : terracotta #C85A17, inactive gray #9E9E9E
+
+
+Fix 2 — Merchant home screen : fill the white gap and redesign header :
+
+Same fix : extend header to fill full top area, no white gap
+Header gradient : deep blue #2C3E8C → Majorelle blue #2D9CDB → teal #00B4D8 (top to bottom)
+Top row : "Bonjour, [Nom du commerce] 👋" white, 16px, opacity 0.9
+Stats row (2 metric cards inside header) :
+
+Left card : total active customers, number in gold #F9A602, bold, 28px, label white opacity 0.8
+Right card : points distributed this month, same style
+Cards background : white opacity 0.15, border-radius 16px, padding 12px
+
+
+Below stats : "Transactions récentes" label white, bold
+Subtle geometric zellige-like pattern overlay (opacity 0.07, white lines) — same as customer
+Bottom of header : smooth wave cut into white content area
+Transaction rows : teal dot for points credited, red dot for rewards redeemed, customer name bold, amount in gold #F9A602
+Bottom nav active tab : Majorelle blue #2D9CDB, inactive gray #9E9E9E
+
+
+Fix 3 — Add "Apparence" section in BOTH profile screens (customer + merchant) :
+Light / Dark mode toggle :
+
+Row with sun icon (light) and moon icon (dark)
+Toggle switch : terracotta #C85A17 when active (customer) / Majorelle blue #2D9CDB when active (merchant)
+Dark mode : background #121212, cards #1E1E1E, text white, accents unchanged
+Save in AsyncStorage, apply on next launch
+
+Accent color picker :
+
+Label : "Couleur principale"
+5 circular swatches (36px, checkmark on selected) :
+
+Terracotta #C85A17 (customer default)
+Bleu Majorelle #2D9CDB (merchant default)
+Or #F9A602
+Vert sauge #5C8A5A
+Violet #7B2D8B
+
+
+Selected color applies as accent across the entire app for that user type
+Save in AsyncStorage, persist across sessions
+
+
+Global color rules — Customer side :
+
+Primary buttons : terracotta #C85A17, white text, border-radius 99px
+Points & rewards values : gold #F9A602, bold
+Links & secondary actions : Majorelle blue #2D9CDB
+Success : #27AE60 / Error : #E74C3C
+Cards : white, border 0.5px #E0E0E0, border-radius 16px
+
+Global color rules — Merchant side :
+
+Primary buttons : Majorelle blue #2D9CDB, white text, border-radius 99px
+Stats & key numbers : gold #F9A602, bold
+Links & secondary actions : terracotta #C85A17
+Success : #27AE60 / Error : #E74C3C
+Cards : white, border 0.5px #E0E0E0, border-radius 16px
+
+
+Shared rules for both sides :
+
+No heavy Moroccan clichés — keep patterns subtle, modern, and minimal
+All theme preferences (dark/light + accent color) stored in AsyncStorage under separate keys : customer_theme, merchant_theme
+Theme context must re-render the full navigation stack instantly on toggle — no restart required
