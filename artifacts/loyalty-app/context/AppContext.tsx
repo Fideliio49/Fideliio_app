@@ -11,7 +11,7 @@ export const ACCENT_COLORS = [
   { key: "terracotta", value: "#C85A17" },
   { key: "majorelleBlue", value: "#2D9CDB" },
   { key: "gold", value: "#F9A602" },
-  { key: "sageGreen", value: "#5C8A5A" },
+  { key: "teal", value: "#00B4D8" },
   { key: "violet", value: "#7B2D8B" },
 ];
 

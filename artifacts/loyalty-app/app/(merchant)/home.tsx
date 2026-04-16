@@ -41,7 +41,7 @@ export default function MerchantHomeScreen() {
   );
 
   return (
-    <SafeAreaView edges={["left", "right"]} style={{ flex: 1, backgroundColor: colors.background }}>
+    <SafeAreaView edges={["left", "right"]} style={{ flex: 1, backgroundColor: "#2C3E8C" }}>
     <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={{ paddingBottom: 100 }}

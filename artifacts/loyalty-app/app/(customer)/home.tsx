@@ -92,7 +92,7 @@ export default function CustomerHomeScreen() {
   );
 
   return (
-    <SafeAreaView edges={["left", "right"]} style={{ flex: 1, backgroundColor: colors.background }}>
+    <SafeAreaView edges={["left", "right"]} style={{ flex: 1, backgroundColor: "#C85A17" }}>
     <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={{ paddingBottom: 100 + bottomPad }}

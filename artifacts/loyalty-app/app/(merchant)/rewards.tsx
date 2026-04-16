@@ -151,12 +151,14 @@ export default function MerchantRewardsScreen() {
                 <Feather name="x" size={22} color={colors.mutedForeground} />
               </TouchableOpacity>
             </View>
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               <Input
                 label={t("rewards.rewardName")}
                 placeholder="Ex: Free coffee"
                 value={name}
                 onChangeText={setName}
+                keyboardType="default"
+                autoCapitalize="sentences"
                 leftIcon="gift"
                 error={errors.name}
               />

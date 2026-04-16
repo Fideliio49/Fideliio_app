@@ -1,0 +1,75 @@
+Fix the following 5 bugs. Do not modify anything else.
+
+Bug 1 — Keyboard pushes content up and doesn't come back :
+
+When the user opens a form and the keyboard appears, the screen content shifts up correctly but when the keyboard dismisses, the layout does not return to its original position
+Fix : wrap every screen that contains text inputs inside KeyboardAvoidingView with the correct behavior :
+
+iOS : behavior="padding"
+Android : behavior="height"
+
+
+Add keyboardShouldPersistTaps="handled" on all ScrollView components
+Add dismissKeyboard on tap outside any input using TouchableWithoutFeedback wrapping the screen
+This must be fixed on ALL screens with inputs : campaigns form, profile edit, login, register, settings
+
+
+Bug 2 — Merchant side missing theme/color picker in profile (same as customer) :
+
+The customer profile already has an "Apparence" section with light/dark toggle and accent color picker
+The merchant profile is missing this entirely — add the exact same section to the merchant profile screen
+Merchant default accent color : Majorelle blue #2D9CDB
+Color swatches to show (5 options, circular 36px, checkmark on selected) :
+
+Majorelle blue #2D9CDB (merchant default)
+Terracotta #C85A17
+Gold #F9A602
+Teal #00B4D8
+Violet #7B2D8B
+
+
+Light/dark toggle : same behavior as customer side — saves to AsyncStorage under key merchant_theme, applies instantly without restart
+Place this section just above the "Se déconnecter" button in the merchant profile screen
+
+
+Bug 3 — Customer home screen : status bar still overlapping the header :
+
+The time and battery icons are still showing through the header gradient on the customer home screen
+Fix :
+
+Import StatusBar from react-native
+Set StatusBar to barStyle="light-content" on this screen
+Wrap the entire screen (including the gradient header) inside a SafeAreaView with style={{ flex: 1, backgroundColor: '#C85A17' }} — the backgroundColor must match the TOP color of the gradient so the status bar area blends in
+Do NOT use edges prop alone — also set the background color on the SafeAreaView
+
+
+
+
+Bug 4 — Merchant home screen : status bar still overlapping the header :
+
+Same issue as Bug 3 but on the merchant dashboard
+The header shows blue/teal gradient but the status bar area is white or transparent
+Fix : same approach as Bug 3 but with merchant top gradient color #2C3E8C as the SafeAreaView backgroundColor
+Set StatusBar barStyle="light-content" on this screen
+The blue gradient must extend fully behind the status bar with no white gap
+
+
+Bug 5 — Campaigns form : keyboard type is wrong for reward name field :
+
+The "Nom de la récompense" input is triggering the numeric keypad instead of the alphabetic keyboard
+Fix : set keyboardType="default" and autoCapitalize="sentences" on the reward name text input
+Also check all other text inputs in the campaigns form and make sure each one uses the correct keyboard type :
+
+Reward name : keyboardType="default"
+Points required : keyboardType="numeric"
+Discount percentage : keyboardType="numeric"
+Expiry date : use a DatePicker component instead of a text input if not already done
+
+
+
+
+General rules :
+
+Do not regenerate any screen from scratch — only apply the targeted fixes above
+All fixes must work in both light and dark mode
+All fixes must work on both iOS and Android

@@ -10,6 +10,9 @@ import {
   Switch,
   StatusBar,
   TextInput,
+  KeyboardAvoidingView,
+  TouchableWithoutFeedback,
+  Keyboard,
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 import { useTranslation } from "react-i18next";
@@ -17,7 +20,7 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
-import { useApp, Language } from "@/context/AppContext";
+import { useApp, Language, ACCENT_COLORS } from "@/context/AppContext";
 import { useData } from "@/context/DataContext";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -36,7 +39,7 @@ const CATEGORY_KEYS = ["restaurant", "clothing", "hairSalon", "hotel", "other"] 
 export default function MerchantProfileScreen() {
   const colors = useColors();
   const { t } = useTranslation();
-  const { user, setUser, language, setLanguage, logout, colorTheme } = useApp();
+  const { user, setUser, language, setLanguage, logout, colorTheme, setColorTheme, accentColor, setAccentColor } = useApp();
   const router = useRouter();
   const { getMerchantByUserId, updateMerchant } = useData();
   const insets = useSafeAreaInsets();
@@ -167,7 +170,12 @@ export default function MerchantProfileScreen() {
   ];
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: colors.background }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+      <View style={{ flex: 1 }}>
       <ScrollView
         style={[styles.container, { backgroundColor: colors.background }]}
         contentContainerStyle={{ paddingBottom: 100 }}
@@ -431,6 +439,59 @@ export default function MerchantProfileScreen() {
             </View>
           </Card>
 
+          <Card style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]}>
+              Apparence
+            </Text>
+            <View style={styles.themeRow}>
+              <View style={styles.themeIconRow}>
+                <Feather name="sun" size={18} color={!isDark ? MERCHANT_BLUE : colors.mutedForeground} />
+                <Text style={[styles.themeLabel, { color: colors.foreground, fontFamily: "Inter_400Regular" }]}>
+                  {isDark ? "Mode sombre" : "Mode clair"}
+                </Text>
+                <Feather name="moon" size={18} color={isDark ? MERCHANT_BLUE : colors.mutedForeground} />
+              </View>
+              <Switch
+                value={isDark}
+                onValueChange={(val) => setColorTheme(val ? "dark" : "light")}
+                trackColor={{ false: colors.border, true: MERCHANT_BLUE + "80" }}
+                thumbColor={isDark ? MERCHANT_BLUE : colors.mutedForeground}
+              />
+            </View>
+            <View style={styles.accentSection}>
+              <Text style={[styles.accentLabel, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
+                Couleur principale
+              </Text>
+              <View style={styles.swatchRow}>
+                {ACCENT_COLORS.map((swatch) => {
+                  const isSelected = accentColor === swatch.value;
+                  return (
+                    <TouchableOpacity
+                      key={swatch.key}
+                      onPress={() => setAccentColor(swatch.value)}
+                      style={[
+                        styles.swatch,
+                        {
+                          backgroundColor: swatch.value,
+                          borderWidth: isSelected ? 3 : 2,
+                          borderColor: isSelected ? swatch.value : "transparent",
+                          shadowColor: isSelected ? swatch.value : "transparent",
+                          shadowOffset: { width: 0, height: 2 },
+                          shadowOpacity: isSelected ? 0.5 : 0,
+                          shadowRadius: 4,
+                          elevation: isSelected ? 4 : 0,
+                          transform: [{ scale: isSelected ? 1.15 : 1 }],
+                        },
+                      ]}
+                    >
+                      {isSelected && <Feather name="check" size={14} color="white" />}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          </Card>
+
           <Button title={t("profile.logout")} onPress={handleLogout} variant="danger" size="lg" />
         </View>
       </ScrollView>
@@ -440,7 +501,9 @@ export default function MerchantProfileScreen() {
           <Text style={styles.toastText}>{toastMsg}</Text>
         </View>
       )}
-    </View>
+      </View>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -475,6 +538,13 @@ const styles = StyleSheet.create({
   infoField: { marginBottom: 12 },
   fieldLabel: { fontSize: 12, marginBottom: 4 },
   fieldInput: { paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, borderRadius: 8 },
+  themeRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 },
+  themeIconRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  themeLabel: { fontSize: 14 },
+  accentSection: { gap: 10 },
+  accentLabel: { fontSize: 13 },
+  swatchRow: { flexDirection: "row", gap: 14, alignItems: "center" },
+  swatch: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
   fieldReadonly: { fontSize: 14, paddingVertical: 10 },
   catGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 },
   catChip: { paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1.5 },
