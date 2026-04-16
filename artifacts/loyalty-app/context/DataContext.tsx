@@ -82,7 +82,9 @@ interface DataContextType {
   getCustomerTransactions: (customerId: string) => Transaction[];
   getMerchantTransactions: (merchantId: string) => Transaction[];
   getMerchantRewards: (merchantId: string) => Reward[];
-  getCustomerRewards: (customerId: string) => { reward: Reward; merchant: MerchantData }[];
+  getCustomerRewards: (customerId: string) => { reward: Reward; merchant: MerchantData; customerPoints: number }[];
+  getPointsAtMerchant: (customerId: string, merchantId: string) => number;
+  getMerchantStats: (merchantId: string) => { activeCustomers: number; pointsThisMonth: number };
   getCustomerRedemptions: (customerId: string) => Redemption[];
   getCustomerProgressPerMerchant: (customerId: string) => MerchantProgressItem[];
   registerMerchant: (m: Omit<MerchantData, "id" | "totalCustomers" | "pointsThisMonth" | "rewardsRedeemed" | "qrCode">) => Promise<MerchantData>;
@@ -290,6 +292,30 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return rewards.filter((r) => r.merchantId === merchantId);
   }
 
+  function getPointsAtMerchant(customerId: string, merchantId: string): number {
+    const earned = transactions
+      .filter((t) => t.customerId === customerId && t.merchantId === merchantId)
+      .reduce((sum, t) => sum + t.pointsEarned, 0);
+    const redeemed = redemptions
+      .filter((r) => r.customerId === customerId)
+      .reduce((sum, r) => {
+        const rw = rewards.find((rw) => rw.id === r.rewardId);
+        return sum + (rw?.merchantId === merchantId ? (rw.pointsRequired) : 0);
+      }, 0);
+    return Math.max(0, earned - redeemed);
+  }
+
+  function getMerchantStats(merchantId: string) {
+    const txs = transactions.filter((t) => t.merchantId === merchantId && t.pointsEarned > 0);
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const activeCustomers = new Set(txs.map((t) => t.customerId)).size;
+    const pointsThisMonth = txs
+      .filter((t) => t.createdAt >= monthStart)
+      .reduce((sum, t) => sum + t.pointsEarned, 0);
+    return { activeCustomers, pointsThisMonth };
+  }
+
   function getCustomerRewards(customerId: string) {
     const customer = customers.find((c) => c.id === customerId);
     if (!customer) return [];
@@ -297,9 +323,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       .filter((r) => r.isActive)
       .map((r) => {
         const merchant = merchants.find((m) => m.id === r.merchantId);
-        return merchant ? { reward: r, merchant } : null;
+        if (!merchant) return null;
+        const customerPoints = getPointsAtMerchant(customerId, merchant.id);
+        return { reward: r, merchant, customerPoints };
       })
-      .filter(Boolean) as { reward: Reward; merchant: MerchantData }[];
+      .filter(Boolean) as { reward: Reward; merchant: MerchantData; customerPoints: number }[];
   }
 
   function getCustomerRedemptions(customerId: string) {
@@ -423,6 +451,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         getMerchantTransactions,
         getMerchantRewards,
         getCustomerRewards,
+        getPointsAtMerchant,
+        getMerchantStats,
         getCustomerRedemptions,
         getCustomerProgressPerMerchant,
         registerMerchant,

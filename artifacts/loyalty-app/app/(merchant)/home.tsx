@@ -24,10 +24,11 @@ export default function MerchantHomeScreen() {
   const colors = useColors();
   const { t } = useTranslation();
   const { user, merchantAccentColor } = useApp();
-  const { getMerchantByUserId, getMerchantTransactions } = useData();
+  const { getMerchantByUserId, getMerchantTransactions, getMerchantStats } = useData();
 
   const merchant = user ? getMerchantByUserId(user.id) : null;
   const transactions = merchant ? getMerchantTransactions(merchant.id).slice(0, 8) : [];
+  const stats = merchant ? getMerchantStats(merchant.id) : { activeCustomers: 0, pointsThisMonth: 0 };
 
   const topPad = Platform.OS === "web" ? 67 : STATUS_BAR_HEIGHT;
 
@@ -66,14 +67,14 @@ export default function MerchantHomeScreen() {
         <View style={styles.statsRow}>
           <StatCard
             icon="users"
-            value={merchant?.totalCustomers ?? 0}
+            value={stats.activeCustomers}
             label={t("merchant.activeCustomers")}
             color={merchantAccentColor}
             valueColor={"#F9A602"}
           />
           <StatCard
             icon="trending-up"
-            value={merchant?.pointsThisMonth ?? 0}
+            value={stats.pointsThisMonth}
             label={t("merchant.pointsDistributed")}
             color={merchantAccentColor}
             valueColor={"#F9A602"}

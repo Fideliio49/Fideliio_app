@@ -80,7 +80,7 @@ export default function CustomerHomeScreen() {
     : [];
   const availableRewards = customer ? getCustomerRewards(customer.id) : [];
   const redeemableRewards = availableRewards.filter(
-    ({ reward }) => (customer?.totalPoints ?? 0) >= reward.pointsRequired
+    ({ reward, customerPoints }) => customerPoints >= reward.pointsRequired
   );
   const progressItems = customer
     ? getCustomerProgressPerMerchant(customer.id).slice(0, 3)
@@ -252,11 +252,11 @@ export default function CustomerHomeScreen() {
             >
               {t("customer.availableRewards")}
             </Text>
-            {redeemableRewards.slice(0, 3).map(({ reward, merchant }) => (
+            {redeemableRewards.slice(0, 3).map(({ reward, merchant, customerPoints }) => (
               <RewardCard
                 key={reward.id}
                 reward={reward}
-                currentPoints={currentPoints}
+                currentPoints={customerPoints}
                 merchantName={merchant.businessName}
                 onRedeem={async () => {
                   if (customer) {

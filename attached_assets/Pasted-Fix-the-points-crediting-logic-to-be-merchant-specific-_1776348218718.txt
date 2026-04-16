@@ -1,0 +1,81 @@
+Fix the points crediting logic to be merchant-specific. Do not change any UI or styling.
+
+The problem :
+When a merchant scans a customer QR code and validates a purchase, the points must be credited specifically to that merchant's account — not to a global customer points pool.
+
+Correct logic to enforce :
+When merchant X validates a purchase for customer Y :
+1. Read merchant identity from auth session :
+   → merchant_id = currently logged-in merchant's ID
+
+2. Read customer identity from scanned QR :
+   → customer_id = customer linked to scanned QR code
+
+3. Calculate points :
+   → points_earned = purchase_amount × multiplier × merchant.points_rate
+
+4. INSERT transaction :
+   → transactions (
+        customer_id   = Y,
+        merchant_id   = X,   ← CRITICAL : must always be the logged-in merchant
+        amount        = purchase_amount,
+        multiplier    = selected_multiplier,
+        points_earned = calculated_points,
+        created_at    = now()
+      )
+
+5. Update customer points AT THIS MERCHANT ONLY :
+   → This is calculated dynamically from transactions :
+      SELECT SUM(points_earned)
+      FROM transactions
+      WHERE customer_id = Y
+      AND merchant_id = X
+
+6. Update merchant dashboard stats :
+   → active_customers = COUNT DISTINCT customer_id WHERE merchant_id = X
+   → points_this_month = SUM points_earned WHERE merchant_id = X
+        AND created_at >= first day of current month
+
+What to verify and fix in the codebase :
+
+In ValidateScreen.tsx : confirm that merchant_id in the transaction INSERT comes from the auth session of the logged-in merchant — not hardcoded, not null, not from the scanned QR
+In the merchant dashboard : all stats (clients actifs, points ce mois, récompenses) must be filtered by WHERE merchant_id = logged_in_merchant.id
+In the customer "Commerçants" screen : points shown per merchant card must be :
+sqlSELECT SUM(points_earned)
+FROM transactions
+WHERE customer_id = :customerId
+AND merchant_id = :merchantId
+
+In the customer home header (global points) :
+sqlSELECT SUM(points_earned)
+FROM transactions
+WHERE customer_id = :customerId
+
+In the "Presque là !" section : progress per merchant must use per-merchant points, not global
+In rewards redemption : check customer_points_at_merchant >= reward.points_required using per-merchant points only
+
+
+Concrete example to test after fix :
+Café Atlas (merchant_id: 001) sets rate : 1 DH = 1 pt
+Boutique Lina (merchant_id: 002) sets rate : 1 DH = 2 pts
+
+Customer scans at Café Atlas → buys 100 DH
+→ transaction inserted : customer_id=C1, merchant_id=001, points=100
+→ Customer points at Café Atlas : 100 pts ✅
+→ Customer points at Boutique Lina : 0 pts ✅
+→ Customer global points : 100 pts ✅
+
+Customer scans at Boutique Lina → buys 50 DH
+→ transaction inserted : customer_id=C1, merchant_id=002, points=100
+→ Customer points at Café Atlas : 100 pts ✅
+→ Customer points at Boutique Lina : 100 pts ✅
+→ Customer global points : 200 pts ✅
+
+Café Atlas reward : "Café gratuit" requires 200 pts
+→ Customer has 100 pts at Café Atlas only → reward NOT available ✅
+
+Rules :
+
+Do not change any UI, colors, or navigation
+Do not modify onboarding or authentication screens
+Only fix the transaction INSERT logic and points calculation queries

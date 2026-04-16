@@ -70,10 +70,10 @@ export default function CustomerRewardsScreen() {
         <FlatList
           data={allRewards}
           keyExtractor={({ reward }) => reward.id}
-          renderItem={({ item: { reward, merchant } }) => (
+          renderItem={({ item: { reward, merchant, customerPoints } }) => (
             <RewardCard
               reward={reward}
-              currentPoints={customer?.totalPoints ?? 0}
+              currentPoints={customerPoints}
               merchantName={merchant.businessName}
               onRedeem={() => handleRedeem(reward.id, merchant.businessName, reward.name)}
             />
