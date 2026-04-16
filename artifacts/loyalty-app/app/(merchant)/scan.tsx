@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,9 +7,10 @@ import {
   Platform,
   ScrollView,
   TouchableOpacity,
+  StatusBar,
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
-import { StatusBar } from "expo-status-bar";
+import { useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
@@ -24,7 +25,7 @@ type ScanStep = "scanning" | "confirm" | "success";
 
 export default function MerchantScanScreen() {
   const colors = useColors();
-  const { user } = useApp();
+  const { user, colorTheme } = useApp();
   const { getMerchantByUserId, getCustomerByQrCode, addTransaction } = useData();
   const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
@@ -39,6 +40,26 @@ export default function MerchantScanScreen() {
 
   const merchant = user ? getMerchantByUserId(user.id) : null;
   const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const isDark = colorTheme === "dark";
+
+  useFocusEffect(
+    useCallback(() => {
+      StatusBar.setBarStyle("light-content", true);
+      if (Platform.OS === "android") StatusBar.setBackgroundColor("#000", true);
+    }, [])
+  );
+
+  useEffect(() => {
+    if (step === "scanning") {
+      StatusBar.setBarStyle("light-content", true);
+      if (Platform.OS === "android") StatusBar.setBackgroundColor("#000", true);
+    } else {
+      StatusBar.setBarStyle(isDark ? "light-content" : "dark-content", true);
+      if (Platform.OS === "android") {
+        StatusBar.setBackgroundColor(isDark ? "#121212" : "#F9FAFB", true);
+      }
+    }
+  }, [step, isDark]);
 
   function handleBarcodeScan({ data }: { data: string }) {
     if (!activelyScanning) return;
@@ -110,10 +131,9 @@ export default function MerchantScanScreen() {
   if (step === "success" && successData) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <StatusBar style="dark" />
         <View style={[styles.centeredWrap, { paddingTop: topPad + 20 }]}>
-          <View style={[styles.successIcon, { backgroundColor: colors.green100 }]}>
-            <Feather name="check-circle" size={60} color={colors.secondary} />
+          <View style={[styles.successIcon, { backgroundColor: "#2D9CDB18" }]}>
+            <Feather name="check-circle" size={60} color="#2D9CDB" />
           </View>
           <Text
             style={[styles.successTitle, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}
@@ -128,9 +148,8 @@ export default function MerchantScanScreen() {
           <Button
             title="Nouveau scan"
             onPress={handleReset}
-            variant="secondary"
             size="lg"
-            style={{ marginTop: 32, minWidth: 200 }}
+            style={{ marginTop: 32, minWidth: 200, backgroundColor: "#2D9CDB", borderRadius: 99 }}
           />
         </View>
       </View>
@@ -149,7 +168,6 @@ export default function MerchantScanScreen() {
         style={[styles.container, { backgroundColor: colors.background }]}
         contentContainerStyle={{ paddingBottom: 100 }}
       >
-        <StatusBar style="dark" />
         <View style={[styles.header, { paddingTop: topPad + 12 }]}>
           <TouchableOpacity onPress={handleReset} style={styles.backBtn}>
             <Feather name="arrow-left" size={22} color={colors.foreground} />
@@ -163,10 +181,10 @@ export default function MerchantScanScreen() {
         <View style={styles.content}>
           <Card style={styles.customerCard}>
             <View
-              style={[styles.custAvatar, { backgroundColor: colors.secondary + "20" }]}
+              style={[styles.custAvatar, { backgroundColor: "#2D9CDB20" }]}
             >
               <Text
-                style={[styles.custInitial, { color: colors.secondary, fontFamily: "Inter_700Bold" }]}
+                style={[styles.custInitial, { color: "#2D9CDB", fontFamily: "Inter_700Bold" }]}
               >
                 {scannedCustomer.firstName[0]}
                 {scannedCustomer.lastName[0]}
@@ -184,8 +202,8 @@ export default function MerchantScanScreen() {
                 {scannedCustomer.totalPoints} points actuels
               </Text>
             </View>
-            <View style={[styles.checkBadge, { backgroundColor: colors.green100 }]}>
-              <Feather name="check" size={16} color={colors.secondary} />
+            <View style={[styles.checkBadge, { backgroundColor: "#2D9CDB18" }]}>
+              <Feather name="check" size={16} color="#2D9CDB" />
             </View>
           </Card>
 
@@ -202,12 +220,12 @@ export default function MerchantScanScreen() {
               <View
                 style={[
                   styles.preview,
-                  { backgroundColor: colors.green100, borderRadius: colors.radius },
+                  { backgroundColor: "#2D9CDB18", borderRadius: colors.radius },
                 ]}
               >
-                <Feather name="zap" size={16} color={colors.secondary} />
+                <Feather name="zap" size={16} color="#2D9CDB" />
                 <Text
-                  style={[styles.previewText, { color: colors.green600, fontFamily: "Inter_600SemiBold" }]}
+                  style={[styles.previewText, { color: "#2D9CDB", fontFamily: "Inter_600SemiBold" }]}
                 >
                   +{preview} points à créditer
                 </Text>
@@ -224,8 +242,7 @@ export default function MerchantScanScreen() {
                 title="Valider"
                 onPress={handleValidate}
                 loading={loading}
-                variant="secondary"
-                style={{ flex: 1 }}
+                style={{ flex: 1, backgroundColor: "#2D9CDB", borderRadius: 99 }}
               />
             </View>
           </Card>
@@ -237,7 +254,6 @@ export default function MerchantScanScreen() {
   // ── Scanner (default) ─────────────────────────────────────────────
   return (
     <View style={[styles.container, { backgroundColor: "#000" }]}>
-      <StatusBar style="light" />
 
       {Platform.OS === "web" ? (
         <View style={[styles.webFallback, { backgroundColor: colors.background, paddingTop: topPad + 12 }]}>

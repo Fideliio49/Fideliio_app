@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback } from "react";
 import {
   View,
   Text,
@@ -7,14 +7,14 @@ import {
   TouchableOpacity,
   Platform,
   useWindowDimensions,
+  StatusBar,
 } from "react-native";
-import { StatusBar } from "expo-status-bar";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import Svg, { Path } from "react-native-svg";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSafeAreaInsets, SafeAreaView } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { useData } from "@/context/DataContext";
@@ -82,9 +82,17 @@ export default function CustomerHomeScreen() {
   const bottomPad = Platform.OS === "web" ? 34 : 0;
   const heroPatternHeight = topPad + 240;
 
+  useFocusEffect(
+    useCallback(() => {
+      StatusBar.setBarStyle("light-content", true);
+      if (Platform.OS === "android") {
+        StatusBar.setBackgroundColor("#C85A17", true);
+      }
+    }, [])
+  );
+
   return (
-    <>
-      <StatusBar style="light" backgroundColor="#C85A17" />
+    <SafeAreaView edges={["left", "right"]} style={{ flex: 1, backgroundColor: colors.background }}>
     <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={{ paddingBottom: 100 + bottomPad }}
@@ -230,7 +238,7 @@ export default function CustomerHomeScreen() {
         </View>
       </View>
     </ScrollView>
-    </>
+    </SafeAreaView>
   );
 }
 

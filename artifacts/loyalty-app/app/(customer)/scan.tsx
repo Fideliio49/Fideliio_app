@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback } from "react";
 import {
   View,
   Text,
@@ -7,9 +7,10 @@ import {
   Share,
   Platform,
   ScrollView,
+  StatusBar,
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
-import { StatusBar } from "expo-status-bar";
+import { useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
@@ -18,7 +19,7 @@ import { useData } from "@/context/DataContext";
 
 export default function CustomerQrCodeScreen() {
   const colors = useColors();
-  const { user } = useApp();
+  const { user, colorTheme } = useApp();
   const { getCustomerByUserId } = useData();
   const insets = useSafeAreaInsets();
 
@@ -26,6 +27,16 @@ export default function CustomerQrCodeScreen() {
   const qrCodeValue = customer?.qrCode ?? `FID-CUST-${user?.id ?? "UNKNOWN"}`;
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : 0;
+  const isDark = colorTheme === "dark";
+
+  useFocusEffect(
+    useCallback(() => {
+      StatusBar.setBarStyle(isDark ? "light-content" : "dark-content", true);
+      if (Platform.OS === "android") {
+        StatusBar.setBackgroundColor(isDark ? "#121212" : "#F9FAFB", true);
+      }
+    }, [isDark])
+  );
 
   async function handleShare() {
     try {
@@ -41,8 +52,6 @@ export default function CustomerQrCodeScreen() {
       contentContainerStyle={[styles.scroll, { paddingTop: topPad + 12, paddingBottom: 100 + bottomPad }]}
       showsVerticalScrollIndicator={false}
     >
-      <StatusBar style="dark" />
-
       <Text
         style={[styles.title, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}
       >

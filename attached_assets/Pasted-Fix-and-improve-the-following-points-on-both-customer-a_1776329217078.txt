@@ -1,0 +1,81 @@
+Fix and improve the following points on both customer and merchant sides. Do not modify any other logic or screens.
+
+Fix 1 — Complete the header on both sides (no white/empty gap at top) :
+
+The header gradient must extend fully to the very top of the screen, behind the status bar
+Use SafeAreaView with edges={['left', 'right']} only — do NOT add top safe area padding on the header itself
+Use StatusBar component at the root level of each screen :
+
+Customer screens : barStyle="light-content" (white time/battery text) — header is dark enough
+Merchant screens : barStyle="light-content" — same reason
+
+
+The gradient must visually fill the entire top section with no gap, no white strip, no cutoff
+
+
+Fix 2 — Apply Moroccan-inspired color scheme to merchant side :
+
+Replace the current merchant header colors with this gradient : deep blue #2C3E8C → Majorelle blue #2D9CDB → teal #00B4D8
+Primary action buttons (Valider, Enregistrer, etc.) : Majorelle blue #2D9CDB, white text, border-radius 99px
+Active bottom nav tab : Majorelle blue #2D9CDB
+Key numbers and stats : gold #F9A602, bold
+Cards background : match current dark/light mode (see Fix 3)
+Keep customer side colors unchanged (coral/orange/purple gradient)
+
+
+Fix 3 — Status bar adapts to dark/light mode :
+
+When the app is in light mode :
+
+StatusBar barStyle="dark-content" on white/light screens (profile, settings, lists)
+StatusBar barStyle="light-content" on colored header screens (home dashboard)
+
+
+When the app is in dark mode :
+
+StatusBar barStyle="light-content" on ALL screens
+Status bar background matches the screen background (#121212 in dark mode)
+
+
+Use a useFocusEffect hook on each screen to update the StatusBar style dynamically when navigating between screens
+This must work on both iOS and Android
+
+
+Fix 4 — Rename "Paramètres" to "Profil" on merchant side :
+
+In the merchant bottom navigation bar, rename the last tab from "Paramètres" to "Profil"
+Update the tab icon from a settings gear icon to a person/profile icon (same as customer side)
+The screen title at the top should also change from "Paramètres" to "Profil"
+Keep all existing content of the screen intact (QR code, points rate, notifications, language) — just rename and re-icon the tab
+
+
+Fix 5 — Add editable personal information section in BOTH profile screens (customer + merchant) :
+Add a new card section titled "Mes informations" at the top of both profile screens with the following fields :
+
+First name — text input, pre-filled with current value, editable
+Last name — text input, pre-filled with current value, editable
+Email address — text input, pre-filled, editable, keyboard type email, with format validation
+Phone number — text input, pre-filled, editable, keyboard type phone, with format validation
+
+Behavior :
+
+Fields are displayed in read-only mode by default, showing current values
+A pencil edit icon button top-right of the card toggles edit mode ON
+In edit mode, all fields become active inputs with a colored border (coral #FF6B6B for customer, teal #00B4D8 for merchant)
+Two buttons appear at the bottom of the card in edit mode : "Annuler" (outlined) and "Enregistrer" (filled, coral or teal)
+On save : validate that at least one of email or phone is filled, then call the API to update the user record in the database
+Show a success toast : "✓ Informations mises à jour" on successful save
+Show an error toast if the API call fails
+On cancel : revert all fields to their previous values
+
+For merchant profile, also add :
+
+Business name — editable text input
+Business category — editable dropdown (Restaurant / Magasin de vêtements / Salon de coiffure / Hôtel / Autre)
+
+
+General rules :
+
+All changes must respect the current dark/light mode theme
+Do not break any existing navigation, authentication, or scan logic
+Apply i18n translation keys to all new labels (FR / AR / EN)

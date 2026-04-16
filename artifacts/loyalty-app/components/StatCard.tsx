@@ -9,9 +9,10 @@ interface StatCardProps {
   value: string | number;
   label: string;
   color?: string;
+  valueColor?: string;
 }
 
-export function StatCard({ icon, value, label, color }: StatCardProps) {
+export function StatCard({ icon, value, label, color, valueColor }: StatCardProps) {
   const colors = useColors();
   const accent = color ?? colors.primary;
 
@@ -20,7 +21,7 @@ export function StatCard({ icon, value, label, color }: StatCardProps) {
       <View style={[styles.iconBox, { backgroundColor: accent + "18", borderRadius: 10 }]}>
         <Feather name={icon} size={18} color={accent} />
       </View>
-      <Text style={[styles.value, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
+      <Text style={[styles.value, { color: valueColor ?? colors.foreground, fontFamily: "Inter_700Bold" }]}>
         {value}
       </Text>
       <Text style={[styles.label, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>

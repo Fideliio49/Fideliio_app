@@ -29,7 +29,7 @@ function NativeTabLayout() {
         <Label>{t("merchant.rewards")}</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="profile">
-        <Icon sf={{ default: "gearshape", selected: "gearshape.fill" }} />
+        <Icon sf={{ default: "person", selected: "person.fill" }} />
         <Label>{t("merchant.profile")}</Label>
       </NativeTabs.Trigger>
     </NativeTabs>
@@ -47,7 +47,7 @@ function ClassicTabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: colors.secondary,
+        tabBarActiveTintColor: colors.majorelleBlue,
         tabBarInactiveTintColor: colors.mutedForeground,
         headerShown: false,
         tabBarStyle: {
@@ -98,7 +98,7 @@ function ClassicTabLayout() {
         name="profile"
         options={{
           title: t("merchant.profile"),
-          tabBarIcon: ({ color }) => <Feather name="settings" size={22} color={color} />,
+          tabBarIcon: ({ color }) => <Feather name="user" size={22} color={color} />,
         }}
       />
     </Tabs>
