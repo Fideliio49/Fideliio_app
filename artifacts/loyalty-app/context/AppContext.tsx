@@ -41,6 +41,7 @@ interface AppContextType {
   setLanguage: (lang: Language) => Promise<void>;
   setUser: (user: User | null) => void;
   logout: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
   completeOnboarding: () => Promise<void>;
   setColorTheme: (theme: ColorTheme) => Promise<void>;
   setAccentColor: (color: string) => Promise<void>;
@@ -132,6 +133,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await AsyncStorage.removeItem(STORAGE_KEYS.USER);
   }
 
+  async function deleteAccount() {
+    setUserState(null);
+    setIsOnboarded(false);
+    setColorThemeState("light");
+    setAccentColorState(DEFAULT_ACCENT);
+    setMerchantAccentColorState(DEFAULT_MERCHANT_ACCENT);
+    await AsyncStorage.clear();
+  }
+
   async function completeOnboarding() {
     setIsOnboarded(true);
     await AsyncStorage.setItem(STORAGE_KEYS.ONBOARDED, "true");
@@ -167,6 +177,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setLanguage,
         setUser,
         logout,
+        deleteAccount,
         completeOnboarding,
         setColorTheme,
         setAccentColor,

@@ -1,0 +1,76 @@
+
+
+Fix the following 4 issues. Do not modify anything else.
+
+Fix 1 — Merchant dashboard header : match exact same height and style as customer header :
+Looking at the screenshots, the merchant header is too short/small compared to the customer header. Fix :
+
+The merchant header must have the exact same height as the customer header
+Same padding structure : paddingTop: STATUSBAR_HEIGHT + 16, paddingBottom: 32, paddingHorizontal: 20
+Add greeting at the top exactly like customer side :
+
+Line 1 : "Je suis un commerçant" → replace with "Bonjour, [Nom du commerce] 👋" white, 16px, opacity 0.85
+Line 2 : "Mon Commerce" white, bold, 28px (keep existing)
+
+
+Merchant header gradient must go from #2C3E8C (top) → #2D9CDB → #00B4D8 (bottom) — same 3-stop gradient structure as customer (#C85A17 → #E67E22 → #7B2D8B)
+The gradient must extend fully behind the status bar — same fix as customer, translucent={true} on Android, paddingTop: STATUSBAR_HEIGHT on the gradient container
+Bottom of header : same smooth wave cut / rounded bottom edge as customer header
+
+
+Fix 2 — Keyboard still not dismissing on merchant Clients screen :
+The keyboard opens on the search input but does not dismiss when tapping outside. This specific screen was not fixed previously. Apply this fix specifically to the merchant Clients screen :
+javascriptimport { Keyboard, TouchableWithoutFeedback } from 'react-native';
+
+<TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+  <View style={{ flex: 1 }}>
+    <TextInput
+      placeholder="Rechercher"
+      onSubmitEditing={Keyboard.dismiss}
+      blurOnSubmit={true}
+      returnKeyType="search"
+    />
+    {/* rest of screen */}
+  </View>
+</TouchableWithoutFeedback>
+
+Also add onScrollBeginDrag={Keyboard.dismiss} on the FlatList or ScrollView containing the clients list
+Add a "Fermer" / "OK" button in the iOS keyboard toolbar using inputAccessoryViewID
+Make sure tapping any client card also dismisses the keyboard first before navigating
+
+
+Fix 3 — Add account deletion option in BOTH customer and merchant profile screens :
+Add a "Supprimer mon compte" option at the very bottom of both profile screens, below the "Se déconnecter" button :
+
+Style : text-only button, no background, text color red #E74C3C, font-size 14px, centered
+Label : "Supprimer mon compte"
+On tap : show a confirmation modal/alert with :
+
+Title : "Supprimer votre compte ?"
+Message : "Cette action est irréversible. Toutes vos données seront définitivement supprimées."
+Two buttons :
+
+"Annuler" — outlined, gray, dismisses the modal
+"Supprimer définitivement" — filled red #E74C3C, white text
+
+
+
+
+On confirm :
+
+Call the API to delete the user account and all associated data from the database
+Clear all AsyncStorage keys
+Navigate back to the language selection screen
+Show a brief toast : "Votre compte a été supprimé"
+
+
+For merchant : also delete all associated campaigns, rewards, and transaction history
+For customer : also delete all points history and redemptions
+
+
+Fix 4 — Dark mode text color issue on customer home screen :
+In image 2, in dark mode, the "Activité récente" label appears in blue/accent color instead of white — fix :
+
+In dark mode, section titles like "Activité récente", "Récompenses disponibles" must be white #FFFFFF, not the accent color
+Only "Voir tous" link should keep the accent color
+Apply this rule to all section titles on both home screens in dark mode

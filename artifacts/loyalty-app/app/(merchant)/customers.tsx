@@ -67,6 +67,7 @@ export default function MerchantCustomersScreen() {
   }
 
   return (
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: topPad + 12, borderBottomColor: colors.border }]}>
         <Text style={[styles.title, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
@@ -78,6 +79,9 @@ export default function MerchantCustomersScreen() {
           onChangeText={setSearch}
           leftIcon="search"
           containerStyle={{ marginBottom: 12, marginTop: 12 }}
+          returnKeyType="search"
+          onSubmitEditing={Keyboard.dismiss}
+          blurOnSubmit={true}
         />
       </View>
 
@@ -86,6 +90,7 @@ export default function MerchantCustomersScreen() {
         keyExtractor={(c) => c.id}
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
+        onScrollBeginDrag={Keyboard.dismiss}
         renderItem={({ item }) => (
           <Card style={styles.customerCard}>
             <View style={styles.row}>
@@ -114,7 +119,7 @@ export default function MerchantCustomersScreen() {
                 </View>
               </View>
               <TouchableOpacity
-                onPress={() => setSelectedCust(item.id)}
+                onPress={() => { Keyboard.dismiss(); setSelectedCust(item.id); }}
                 style={[styles.adjustBtn, { backgroundColor: colors.muted, borderRadius: colors.radius - 4 }]}
               >
                 <Feather name="edit-3" size={16} color={colors.primary} />
@@ -173,6 +178,7 @@ export default function MerchantCustomersScreen() {
         </View>
       </Modal>
     </View>
+    </TouchableWithoutFeedback>
   );
 }
 

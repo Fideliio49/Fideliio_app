@@ -185,7 +185,7 @@ export default function CustomerHomeScreen() {
             <Text
               style={[
                 styles.sectionTitle,
-                { color: "#1a1a2e", fontFamily: "Inter_700Bold" },
+                { color: colors.foreground, fontFamily: "Inter_700Bold" },
               ]}
             >
               Activité récente

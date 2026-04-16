@@ -49,6 +49,7 @@ export default function CustomerProfileScreen() {
     language,
     setLanguage,
     logout,
+    deleteAccount,
     colorTheme,
     setColorTheme,
     accentColor,
@@ -145,6 +146,24 @@ export default function CustomerProfileScreen() {
         },
       },
     ]);
+  }
+
+  function handleDeleteAccount() {
+    Alert.alert(
+      "Supprimer votre compte ?",
+      "Cette action est irréversible. Toutes vos données seront définitivement supprimées.",
+      [
+        { text: "Annuler", style: "cancel" },
+        {
+          text: "Supprimer définitivement",
+          style: "destructive",
+          onPress: async () => {
+            await deleteAccount();
+            router.replace("/onboarding/language");
+          },
+        },
+      ]
+    );
   }
 
   const tierColor = TIER_COLORS[customer?.tier ?? "bronze"];
@@ -387,6 +406,10 @@ export default function CustomerProfileScreen() {
           )}
 
           <Button title={t("profile.logout")} onPress={handleLogout} variant="danger" size="lg" style={styles.logoutBtn} />
+
+          <TouchableOpacity onPress={handleDeleteAccount} style={styles.deleteAccountBtn}>
+            <Text style={styles.deleteAccountText}>Supprimer mon compte</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
 
@@ -429,6 +452,8 @@ const styles = StyleSheet.create({
   swatchRow: { flexDirection: "row", gap: 14, alignItems: "center" },
   swatch: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
   logoutBtn: {},
+  deleteAccountBtn: { alignItems: "center", paddingVertical: 16, paddingHorizontal: 20 },
+  deleteAccountText: { color: "#E74C3C", fontSize: 14, textAlign: "center" },
   infoHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
   infoField: { marginBottom: 12 },
   fieldLabel: { fontSize: 12, marginBottom: 4 },

@@ -38,7 +38,7 @@ const CATEGORY_KEYS = ["restaurant", "clothing", "hairSalon", "hotel", "other"] 
 export default function MerchantProfileScreen() {
   const colors = useColors();
   const { t } = useTranslation();
-  const { user, setUser, language, setLanguage, logout, colorTheme, setColorTheme, merchantAccentColor, setMerchantAccentColor } = useApp();
+  const { user, setUser, language, setLanguage, logout, deleteAccount, colorTheme, setColorTheme, merchantAccentColor, setMerchantAccentColor } = useApp();
   const router = useRouter();
   const { getMerchantByUserId, updateMerchant } = useData();
   const insets = useSafeAreaInsets();
@@ -159,6 +159,24 @@ export default function MerchantProfileScreen() {
         },
       },
     ]);
+  }
+
+  function handleDeleteAccount() {
+    Alert.alert(
+      "Supprimer votre compte ?",
+      "Cette action est irréversible. Toutes vos données seront définitivement supprimées.",
+      [
+        { text: "Annuler", style: "cancel" },
+        {
+          text: "Supprimer définitivement",
+          style: "destructive",
+          onPress: async () => {
+            await deleteAccount();
+            router.replace("/onboarding/language");
+          },
+        },
+      ]
+    );
   }
 
   const infoFields = [
@@ -491,6 +509,10 @@ export default function MerchantProfileScreen() {
           </Card>
 
           <Button title={t("profile.logout")} onPress={handleLogout} variant="danger" size="lg" />
+
+          <TouchableOpacity onPress={handleDeleteAccount} style={styles.deleteAccountBtn}>
+            <Text style={styles.deleteAccountText}>Supprimer mon compte</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
 
@@ -541,6 +563,8 @@ const styles = StyleSheet.create({
   accentLabel: { fontSize: 13 },
   swatchRow: { flexDirection: "row", gap: 14, alignItems: "center" },
   swatch: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
+  deleteAccountBtn: { alignItems: "center", paddingVertical: 16, paddingHorizontal: 20 },
+  deleteAccountText: { color: "#E74C3C", fontSize: 14, textAlign: "center" },
   fieldReadonly: { fontSize: 14, paddingVertical: 10 },
   catGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 },
   catChip: { paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1.5 },

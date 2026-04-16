@@ -41,7 +41,7 @@ export default function MerchantHomeScreen() {
   );
 
   return (
-    <View style={{ flex: 1, backgroundColor: merchantAccentColor }}>
+    <View style={{ flex: 1, backgroundColor: "#2C3E8C" }}>
       <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
     <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
@@ -49,13 +49,13 @@ export default function MerchantHomeScreen() {
       showsVerticalScrollIndicator={false}
     >
       <LinearGradient
-        colors={[merchantAccentColor, "#00B4D8"]}
+        colors={["#2C3E8C", merchantAccentColor, "#00B4D8"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 0.4, y: 1 }}
         style={[styles.hero, { paddingTop: topPad + 16 }]}
       >
         <Text style={[styles.greeting, { fontFamily: "Inter_400Regular" }]}>
-          {t("role.merchant")}
+          Bonjour, {user?.firstName} 👋
         </Text>
         <Text style={[styles.bizName, { fontFamily: "Inter_700Bold" }]}>
           {merchant?.businessName ?? user?.businessName ?? "My Business"}
@@ -126,12 +126,15 @@ export default function MerchantHomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   hero: {
-    paddingHorizontal: 24,
-    paddingBottom: 28,
+    paddingHorizontal: 20,
+    paddingBottom: 32,
     gap: 4,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
+    overflow: "hidden",
   },
-  greeting: { color: "rgba(255,255,255,0.85)", fontSize: 14 },
-  bizName: { color: "#fff", fontSize: 26 },
+  greeting: { color: "rgba(255,255,255,0.85)", fontSize: 16 },
+  bizName: { color: "#fff", fontSize: 28 },
   stats: { padding: 16, gap: 12 },
   statsRow: { flexDirection: "row", gap: 12 },
   section: { paddingHorizontal: 16, marginBottom: 24 },
