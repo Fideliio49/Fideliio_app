@@ -17,7 +17,7 @@ import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { Input } from "@/components/ui/Input";
 import { FideliioLogo } from "@/components/FideliioLogo";
-import { registerWithEmail, sendPhoneOTP, verifyPhoneOTP } from "@/lib/auth";
+import { registerWithEmail, verifyEmailOTP, sendPhoneOTP, verifyPhoneOTP } from "@/lib/auth";
 
 const CATEGORIES = ["restaurant", "clothing", "hairSalon", "hotel", "other"] as const;
 
@@ -73,9 +73,9 @@ export default function RegisterScreen() {
         : { firstName, lastName, email: email || undefined, phone: phone || undefined };
 
       if (mode === "email") {
-        await registerWithEmail(email.trim(), password, userData, role ?? "customer");
-        await completeOnboarding();
-        router.replace(dest as any);
+        await registerWithEmail(email.trim(), userData, role ?? "customer");
+        setPhoneStep("otp");
+        setErrors({});
       } else {
         await sendPhoneOTP(phone.trim());
         setPhoneStep("otp");
@@ -97,7 +97,11 @@ export default function RegisterScreen() {
         ? { firstName, lastName, businessName, category, pointsRate: 1 }
         : { firstName, lastName, phone: phone || undefined };
 
-      await verifyPhoneOTP(phone.trim(), otpCode.trim(), userData, role ?? "customer");
+      if (mode === "email") {
+        await verifyEmailOTP(email.trim(), otpCode.trim(), userData, role ?? "customer");
+      } else {
+        await verifyPhoneOTP(phone.trim(), otpCode.trim(), userData, role ?? "customer");
+      }
       await completeOnboarding();
       router.replace(dest as any);
     } catch (e: any) {
@@ -107,7 +111,7 @@ export default function RegisterScreen() {
     }
   }
 
-  if (mode === "phone" && phoneStep === "otp") {
+  if (phoneStep === "otp") {
     return (
       <View style={[styles.container, { backgroundColor: "#fff" }]}>
         <KeyboardAwareScrollView
@@ -127,7 +131,7 @@ export default function RegisterScreen() {
               Vérification
             </Text>
             <Text style={[{ color: "#6B7280", fontSize: 14, textAlign: "center", fontFamily: "Inter_400Regular" }]}>
-              Code envoyé au {phone}
+              Code envoyé à {mode === "email" ? email : phone}
             </Text>
           </View>
 
@@ -156,8 +160,17 @@ export default function RegisterScreen() {
 
           <TouchableOpacity
             onPress={async () => {
-              try { await sendPhoneOTP(phone.trim()); Alert.alert("OK", "Code renvoyé !"); }
-              catch { Alert.alert("Erreur", "Impossible de renvoyer le code."); }
+              try {
+                if (mode === "email") {
+                  const userData = isMerchant
+                    ? { firstName, lastName, businessName, category, pointsRate: 1 }
+                    : { firstName, lastName };
+                  await registerWithEmail(email.trim(), userData, role ?? "customer");
+                } else {
+                  await sendPhoneOTP(phone.trim());
+                }
+                Alert.alert("OK", "Code renvoyé !");
+              } catch { Alert.alert("Erreur", "Impossible de renvoyer le code."); }
             }}
             style={styles.resendBtn}
           >

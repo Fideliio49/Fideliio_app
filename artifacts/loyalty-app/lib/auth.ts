@@ -5,10 +5,9 @@ function generateQrCode(prefix: string): string {
   return `${prefix}-${nanoid(8).toUpperCase()}`;
 }
 
-// ─── REGISTER WITH EMAIL ──────────────────────────────────────────────────────
+// ─── REGISTER WITH EMAIL (sends OTP — no password) ───────────────────────────
 export const registerWithEmail = async (
   email: string,
-  password: string,
   userData: {
     firstName: string;
     lastName: string;
@@ -19,10 +18,10 @@ export const registerWithEmail = async (
   },
   userType: 'customer' | 'merchant'
 ) => {
-  const { data: authData, error: authError } = await supabase.auth.signUp({
+  const { error } = await supabase.auth.signInWithOtp({
     email,
-    password,
     options: {
+      shouldCreateUser: true,
       data: {
         role: userType,
         firstName: userData.firstName,
@@ -33,10 +32,38 @@ export const registerWithEmail = async (
       },
     },
   });
-  if (authError) throw authError;
+  if (error) throw error;
+  // OTP sent to email — caller must show OTP input and call verifyEmailOTP
+};
 
-  await createProfile(authData.user!.id, userData, userType);
-  return authData;
+// ─── VERIFY EMAIL OTP ─────────────────────────────────────────────────────────
+export const verifyEmailOTP = async (
+  email: string,
+  token: string,
+  userData: any,
+  userType: 'customer' | 'merchant'
+) => {
+  const { data, error } = await supabase.auth.verifyOtp({
+    email,
+    token,
+    type: 'email',
+  });
+  if (error) throw error;
+
+  const userId = data.user!.id;
+  const table = userType === 'customer' ? 'customers' : 'merchants';
+
+  const { data: existing } = await supabase
+    .from(table)
+    .select('id')
+    .eq('user_id', userId)
+    .single();
+
+  if (!existing) {
+    await createProfile(userId, userData, userType);
+  }
+
+  return data;
 };
 
 // ─── SEND PHONE OTP ───────────────────────────────────────────────────────────
