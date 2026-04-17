@@ -1,98 +1,206 @@
 -- ============================================================
--- Fideliio — Supabase Schema
--- Run this entire file in your Supabase SQL Editor
--- (Dashboard → SQL Editor → New query → paste → Run)
+-- Fideliio — Fix vues existantes
 -- ============================================================
 
--- Merchants
-CREATE TABLE IF NOT EXISTS merchants (
-  id              TEXT PRIMARY KEY,
-  user_id         TEXT NOT NULL,
-  business_name   TEXT NOT NULL,
-  category        TEXT NOT NULL DEFAULT 'other',
-  logo_url        TEXT,
-  points_rate     INTEGER NOT NULL DEFAULT 1,
-  total_customers INTEGER NOT NULL DEFAULT 0,
-  points_this_month INTEGER NOT NULL DEFAULT 0,
-  rewards_redeemed  INTEGER NOT NULL DEFAULT 0,
-  qr_code         TEXT,
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+-- ------------------------------------------------------------
+-- STEP 1 : Supprimer les vues existantes d'abord
+-- ------------------------------------------------------------
+DROP VIEW IF EXISTS customer_reward_progress CASCADE;
+DROP VIEW IF EXISTS customer_merchant_points CASCADE;
+DROP VIEW IF EXISTS customer_total_points CASCADE;
+DROP VIEW IF EXISTS merchant_stats CASCADE;
 
--- Customers
-CREATE TABLE IF NOT EXISTS customers (
-  id           TEXT PRIMARY KEY,
-  user_id      TEXT NOT NULL,
-  first_name   TEXT NOT NULL,
-  last_name    TEXT NOT NULL,
-  phone        TEXT,
-  email        TEXT,
-  total_points INTEGER NOT NULL DEFAULT 0,
-  tier         TEXT NOT NULL DEFAULT 'bronze',
-  qr_code      TEXT,
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+-- ------------------------------------------------------------
+-- STEP 2 : Ajouter les colonnes manquantes aux tables
+-- ------------------------------------------------------------
 
--- Rewards
-CREATE TABLE IF NOT EXISTS rewards (
-  id              TEXT PRIMARY KEY,
-  merchant_id     TEXT NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
-  merchant_name   TEXT,
-  name            TEXT NOT NULL,
-  points_required INTEGER NOT NULL,
-  reward_type     TEXT NOT NULL DEFAULT 'freeProduct',
-  is_active       BOOLEAN NOT NULL DEFAULT true,
-  expiry_date     TEXT,
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+-- Ajouter multiplier à transactions
+ALTER TABLE public.transactions
+  ADD COLUMN IF NOT EXISTS multiplier INTEGER NOT NULL DEFAULT 1;
 
--- Transactions
-CREATE TABLE IF NOT EXISTS transactions (
-  id            TEXT PRIMARY KEY,
-  customer_id   TEXT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
-  merchant_id   TEXT NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
-  merchant_name TEXT NOT NULL DEFAULT '',
-  customer_name TEXT,
-  amount        NUMERIC NOT NULL DEFAULT 0,
-  points_earned INTEGER NOT NULL,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+-- Ajouter merchant_id à redemptions
+ALTER TABLE public.redemptions
+  ADD COLUMN IF NOT EXISTS merchant_id TEXT
+  REFERENCES public.merchants(id) ON DELETE CASCADE;
 
--- Redemptions
-CREATE TABLE IF NOT EXISTS redemptions (
-  id            TEXT PRIMARY KEY,
-  customer_id   TEXT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
-  reward_id     TEXT NOT NULL REFERENCES rewards(id) ON DELETE CASCADE,
-  reward_name   TEXT NOT NULL DEFAULT '',
-  merchant_name TEXT NOT NULL DEFAULT '',
-  redeemed_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+-- Supprimer total_points statique de customers
+-- (sera calculé dynamiquement via la vue)
+ALTER TABLE public.customers
+  DROP COLUMN IF EXISTS total_points;
 
--- ---- Disable RLS so the anon key can read/write ----
-ALTER TABLE merchants   DISABLE ROW LEVEL SECURITY;
-ALTER TABLE customers   DISABLE ROW LEVEL SECURITY;
-ALTER TABLE rewards     DISABLE ROW LEVEL SECURITY;
-ALTER TABLE transactions DISABLE ROW LEVEL SECURITY;
-ALTER TABLE redemptions  DISABLE ROW LEVEL SECURITY;
+-- Supprimer stats statiques de merchants
+-- (seront calculées dynamiquement via merchant_stats)
+ALTER TABLE public.merchants
+  DROP COLUMN IF EXISTS total_customers;
 
-GRANT ALL ON merchants    TO anon, authenticated;
-GRANT ALL ON customers    TO anon, authenticated;
-GRANT ALL ON rewards      TO anon, authenticated;
-GRANT ALL ON transactions TO anon, authenticated;
-GRANT ALL ON redemptions  TO anon, authenticated;
+ALTER TABLE public.merchants
+  DROP COLUMN IF EXISTS points_this_month;
 
--- ---- Demo seed data ----
-INSERT INTO merchants (id, user_id, business_name, category, points_rate, total_customers, points_this_month, rewards_redeemed, qr_code) VALUES
-  ('m1', 'u_m1', 'Café Atlas',     'restaurant', 1, 42, 3200, 8,  'FID-MERCH-CAFATLAS'),
-  ('m2', 'u_m2', 'Boutique Lina',  'clothing',   2, 28, 1800, 5,  'FID-MERCH-BOUTLINA'),
-  ('m3', 'u_m3', 'Salon Zara',     'hairSalon',  1, 35, 2400, 12, 'FID-MERCH-SALNZARA'),
-  ('m4', 'u_m4', 'Hôtel Riad',     'hotel',      3, 15, 5000, 3,  'FID-MERCH-HOTELRIAD')
-ON CONFLICT (id) DO NOTHING;
+ALTER TABLE public.merchants
+  DROP COLUMN IF EXISTS rewards_redeemed;
 
-INSERT INTO rewards (id, merchant_id, merchant_name, name, points_required, reward_type, is_active) VALUES
-  ('r1', 'm1', 'Café Atlas',    'Café gratuit',      200,  'freeProduct', true),
-  ('r2', 'm1', 'Café Atlas',    '10% de réduction',  500,  'discount',    true),
-  ('r3', 'm2', 'Boutique Lina', '20% sur tout',      1000, 'discount',    true),
-  ('r4', 'm3', 'Salon Zara',    'Coupe gratuite',    800,  'freeService', true),
-  ('r5', 'm4', 'Hôtel Riad',    'Nuit offerte',      3000, 'freeService', true)
-ON CONFLICT (id) DO NOTHING;
+-- ------------------------------------------------------------
+-- STEP 3 : Contraintes unicité QR codes
+-- ------------------------------------------------------------
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'customers_qr_code_unique'
+  ) THEN
+    ALTER TABLE public.customers
+      ADD CONSTRAINT customers_qr_code_unique UNIQUE (qr_code);
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'merchants_qr_code_unique'
+  ) THEN
+    ALTER TABLE public.merchants
+      ADD CONSTRAINT merchants_qr_code_unique UNIQUE (qr_code);
+  END IF;
+END $$;
+
+-- Index rapides
+CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_qr_code
+  ON public.customers(qr_code);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_merchants_qr_code
+  ON public.merchants(qr_code);
+
+CREATE INDEX IF NOT EXISTS idx_transactions_customer
+  ON public.transactions(customer_id);
+
+CREATE INDEX IF NOT EXISTS idx_transactions_merchant
+  ON public.transactions(merchant_id);
+
+CREATE INDEX IF NOT EXISTS idx_transactions_customer_merchant
+  ON public.transactions(customer_id, merchant_id);
+
+-- ------------------------------------------------------------
+-- STEP 4 : Recréer les vues proprement
+-- ------------------------------------------------------------
+
+-- Vue 1 : Points par client et par commerce
+CREATE VIEW customer_merchant_points AS
+SELECT
+  t.customer_id,
+  t.merchant_id,
+  m.business_name,
+  m.category,
+  m.logo_url,
+  m.points_rate,
+  SUM(t.points_earned)  AS total_points,
+  COUNT(*)              AS visit_count,
+  MAX(t.created_at)     AS last_visit
+FROM public.transactions t
+JOIN public.merchants m ON m.id = t.merchant_id
+GROUP BY
+  t.customer_id,
+  t.merchant_id,
+  m.business_name,
+  m.category,
+  m.logo_url,
+  m.points_rate;
+
+GRANT SELECT ON customer_merchant_points TO anon, authenticated;
+
+-- Vue 2 : Points globaux par client
+CREATE VIEW customer_total_points AS
+SELECT
+  customer_id,
+  SUM(points_earned)  AS total_points,
+  COUNT(*)            AS total_transactions
+FROM public.transactions
+GROUP BY customer_id;
+
+GRANT SELECT ON customer_total_points TO anon, authenticated;
+
+-- Vue 3 : Progression vers prochaine récompense
+CREATE VIEW customer_reward_progress AS
+SELECT
+  cmp.customer_id,
+  cmp.merchant_id,
+  cmp.business_name,
+  cmp.category,
+  cmp.total_points                                    AS customer_points,
+  r.id                                                AS reward_id,
+  r.name                                              AS reward_name,
+  r.points_required                                   AS reward_threshold,
+  LEAST(
+    ROUND(
+      (cmp.total_points::NUMERIC / NULLIF(r.points_required, 0)) * 100
+    ), 100
+  )                                                   AS progress_percent,
+  GREATEST(r.points_required - cmp.total_points, 0)  AS points_remaining
+FROM customer_merchant_points cmp
+JOIN LATERAL (
+  SELECT *
+  FROM public.rewards rw
+  WHERE rw.merchant_id = cmp.merchant_id
+    AND rw.is_active = true
+    AND rw.points_required > cmp.total_points
+  ORDER BY rw.points_required ASC
+  LIMIT 1
+) r ON true;
+
+GRANT SELECT ON customer_reward_progress TO anon, authenticated;
+
+-- Vue 4 : Stats dynamiques commerçant
+CREATE VIEW merchant_stats AS
+SELECT
+  m.id                                              AS merchant_id,
+  m.business_name,
+  COUNT(DISTINCT t.customer_id)                     AS total_customers,
+  COALESCE(SUM(
+    CASE
+      WHEN DATE_TRUNC('month', t.created_at) =
+           DATE_TRUNC('month', NOW())
+      THEN t.points_earned
+      ELSE 0
+    END
+  ), 0)                                             AS points_this_month,
+  COUNT(DISTINCT rd.id)                             AS rewards_redeemed
+FROM public.merchants m
+LEFT JOIN public.transactions t  ON t.merchant_id = m.id
+LEFT JOIN public.redemptions  rd ON rd.merchant_id = m.id
+GROUP BY m.id, m.business_name;
+
+GRANT SELECT ON merchant_stats TO anon, authenticated;
+
+-- ------------------------------------------------------------
+-- STEP 5 : Fonction tier automatique
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION get_customer_tier(points INTEGER)
+RETURNS TEXT AS $$
+BEGIN
+  IF points >= 5000 THEN RETURN 'gold';
+  ELSIF points >= 1000 THEN RETURN 'silver';
+  ELSE RETURN 'bronze';
+  END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ------------------------------------------------------------
+-- STEP 6 : Vérification finale
+-- ------------------------------------------------------------
+SELECT
+  table_name,
+  COUNT(*) AS colonnes
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name IN (
+    'merchants','customers','rewards',
+    'transactions','redemptions'
+  )
+GROUP BY table_name
+ORDER BY table_name;
+
+-- Vérifier les vues créées
+SELECT table_name
+FROM information_schema.views
+WHERE table_schema = 'public'
+ORDER BY table_name;
