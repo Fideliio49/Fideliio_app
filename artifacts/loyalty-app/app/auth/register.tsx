@@ -6,8 +6,6 @@ import {
   TouchableOpacity,
   Alert,
   Platform,
-  ScrollView,
-  TouchableWithoutFeedback,
   Keyboard,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -17,9 +15,9 @@ import { LinearGradient } from "expo-linear-gradient";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
-import { useData } from "@/context/DataContext";
 import { Input } from "@/components/ui/Input";
 import { FideliioLogo } from "@/components/FideliioLogo";
+import { registerWithEmail, sendPhoneOTP, verifyPhoneOTP } from "@/lib/auth";
 
 const CATEGORIES = ["restaurant", "clothing", "hairSalon", "hotel", "other"] as const;
 
@@ -28,14 +26,15 @@ export default function RegisterScreen() {
   const { t } = useTranslation();
   const router = useRouter();
   const { role } = useLocalSearchParams<{ role: "customer" | "merchant" }>();
-  const { setUser, language, completeOnboarding } = useApp();
-  const { registerCustomer, registerMerchant } = useData();
+  const { completeOnboarding } = useApp();
 
   const isMerchant = role === "merchant";
   const accent = isMerchant ? colors.blue : colors.coral;
   const gradientColors: [string, string] = isMerchant ? ["#2C3E8C", "#00B4D8"] : ["#FF6B6B", "#FF8E53"];
 
   const [mode, setMode] = useState<"email" | "phone">("email");
+  const [phoneStep, setPhoneStep] = useState<"form" | "otp">("form");
+
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -46,46 +45,129 @@ export default function RegisterScreen() {
   const [showConfirmPw, setShowConfirmPw] = useState(false);
   const [businessName, setBusinessName] = useState("");
   const [category, setCategory] = useState<string>("restaurant");
+  const [otpCode, setOtpCode] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const dest = isMerchant ? "/(merchant)/home" : "/(customer)/home";
 
   async function handleRegister() {
     const errs: Record<string, string> = {};
     if (!firstName.trim()) errs.firstName = "Required";
     if (!lastName.trim()) errs.lastName = "Required";
-    if (mode === "email" && !email.trim()) errs.email = t("auth.atLeastOne");
-    if (mode === "phone" && !phone.trim()) errs.phone = t("auth.atLeastOne");
-    if (!password.trim()) errs.password = "Required";
-    if (password !== confirmPw) errs.confirmPw = t("auth.passwordsMatch");
+    if (mode === "email") {
+      if (!email.trim()) errs.email = t("auth.atLeastOne");
+      if (!password.trim()) errs.password = "Required";
+      if (password !== confirmPw) errs.confirmPw = t("auth.passwordsMatch");
+    } else {
+      if (!phone.trim()) errs.phone = t("auth.atLeastOne");
+    }
     if (isMerchant && !businessName.trim()) errs.businessName = "Required";
     if (Object.keys(errs).length) { setErrors(errs); return; }
 
     setLoading(true);
     try {
-      await new Promise((r) => setTimeout(r, 700));
-      const userId = `user_${Date.now()}`;
+      const userData = isMerchant
+        ? { firstName, lastName, email: email || undefined, businessName, category, pointsRate: 1 }
+        : { firstName, lastName, email: email || undefined, phone: phone || undefined };
 
-      if (!isMerchant) {
-        await registerCustomer({
-          userId,
-          firstName,
-          lastName,
-          email: email || undefined,
-          phone: phone || undefined,
-          totalPoints: 0,
-        });
-        setUser({ id: userId, role: "customer", firstName, lastName, email: email || undefined, phone: phone || undefined, language, totalPoints: 0 });
+      if (mode === "email") {
+        await registerWithEmail(email.trim(), password, userData, role ?? "customer");
+        await completeOnboarding();
+        router.replace(dest as any);
       } else {
-        await registerMerchant({ userId, businessName, category, pointsRate: 1 });
-        setUser({ id: userId, role: "merchant", firstName, lastName, email: email || undefined, phone: phone || undefined, language, businessName, businessCategory: category, pointsRate: 1 });
+        await sendPhoneOTP(phone.trim());
+        setPhoneStep("otp");
+        setErrors({});
       }
-      await completeOnboarding();
-      router.replace(isMerchant ? "/(merchant)/home" : "/(customer)/home");
-    } catch {
-      Alert.alert("Error", "Registration failed");
+    } catch (e: any) {
+      Alert.alert("Erreur", e.message ?? "Inscription échouée.");
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleVerifyOtp() {
+    if (!otpCode.trim()) { setErrors({ otp: "Required" }); return; }
+
+    setLoading(true);
+    try {
+      const userData = isMerchant
+        ? { firstName, lastName, businessName, category, pointsRate: 1 }
+        : { firstName, lastName, phone: phone || undefined };
+
+      await verifyPhoneOTP(phone.trim(), otpCode.trim(), userData, role ?? "customer");
+      await completeOnboarding();
+      router.replace(dest as any);
+    } catch (e: any) {
+      Alert.alert("Erreur", e.message ?? "Code incorrect.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (mode === "phone" && phoneStep === "otp") {
+    return (
+      <View style={[styles.container, { backgroundColor: "#fff" }]}>
+        <KeyboardAwareScrollView
+          contentContainerStyle={[styles.scroll, { paddingTop: Platform.OS === "web" ? 80 : 60 }]}
+          keyboardShouldPersistTaps="handled"
+          onScrollBeginDrag={Keyboard.dismiss}
+          bottomOffset={20}
+          showsVerticalScrollIndicator={false}
+        >
+          <TouchableOpacity onPress={() => setPhoneStep("form")} style={styles.backBtn}>
+            <Feather name="arrow-left" size={22} color="#0f0f0f" />
+          </TouchableOpacity>
+
+          <View style={styles.header}>
+            <FideliioLogo size={52} />
+            <Text style={[styles.title, { color: "#0f0f0f", fontFamily: "Inter_700Bold" }]}>
+              Vérification
+            </Text>
+            <Text style={[{ color: "#6B7280", fontSize: 14, textAlign: "center", fontFamily: "Inter_400Regular" }]}>
+              Code envoyé au {phone}
+            </Text>
+          </View>
+
+          <Input
+            label={t("auth.otp")}
+            placeholder="123456"
+            value={otpCode}
+            onChangeText={setOtpCode}
+            keyboardType="number-pad"
+            leftIcon="shield"
+            error={errors.otp}
+          />
+
+          <TouchableOpacity onPress={handleVerifyOtp} activeOpacity={0.88} disabled={loading} style={{ marginTop: 8 }}>
+            <LinearGradient
+              colors={gradientColors}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={[styles.ctaBtn, { borderRadius: colors.radius }]}
+            >
+              <Text style={[styles.ctaText, { fontFamily: "Inter_700Bold" }]}>
+                {loading ? t("common.loading") : "Vérifier"}
+              </Text>
+            </LinearGradient>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={async () => {
+              try { await sendPhoneOTP(phone.trim()); Alert.alert("OK", "Code renvoyé !"); }
+              catch { Alert.alert("Erreur", "Impossible de renvoyer le code."); }
+            }}
+            style={styles.resendBtn}
+          >
+            <Text style={[{ color: accent, fontFamily: "Inter_600SemiBold", fontSize: 14 }]}>
+              Renvoyer le code
+            </Text>
+          </TouchableOpacity>
+        </KeyboardAwareScrollView>
+      </View>
+    );
   }
 
   return (
@@ -108,7 +190,6 @@ export default function RegisterScreen() {
           </Text>
         </View>
 
-        {/* Name row */}
         <View style={styles.row2}>
           <Input
             label={t("auth.firstName")}
@@ -130,12 +211,11 @@ export default function RegisterScreen() {
           />
         </View>
 
-        {/* Email / Phone tab */}
         <View style={[styles.tabRow, { borderBottomColor: "#E5E7EB" }]}>
           {(["email", "phone"] as const).map((m) => (
             <TouchableOpacity
               key={m}
-              onPress={() => setMode(m)}
+              onPress={() => { setMode(m); setErrors({}); }}
               style={[styles.tab, { borderBottomColor: mode === m ? accent : "transparent", borderBottomWidth: 2 }]}
             >
               <Text style={[styles.tabText, {
@@ -171,29 +251,32 @@ export default function RegisterScreen() {
           />
         )}
 
-        <Input
-          label={t("auth.password")}
-          placeholder="••••••••"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry={!showPw}
-          leftIcon="lock"
-          rightIcon={showPw ? "eye-off" : "eye"}
-          onRightIconPress={() => setShowPw((v) => !v)}
-          error={errors.password}
-        />
-
-        <Input
-          label={t("auth.confirmPassword")}
-          placeholder="••••••••"
-          value={confirmPw}
-          onChangeText={setConfirmPw}
-          secureTextEntry={!showConfirmPw}
-          leftIcon="lock"
-          rightIcon={showConfirmPw ? "eye-off" : "eye"}
-          onRightIconPress={() => setShowConfirmPw((v) => !v)}
-          error={errors.confirmPw}
-        />
+        {mode === "email" && (
+          <>
+            <Input
+              label={t("auth.password")}
+              placeholder="••••••••"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPw}
+              leftIcon="lock"
+              rightIcon={showPw ? "eye-off" : "eye"}
+              onRightIconPress={() => setShowPw((v) => !v)}
+              error={errors.password}
+            />
+            <Input
+              label={t("auth.confirmPassword")}
+              placeholder="••••••••"
+              value={confirmPw}
+              onChangeText={setConfirmPw}
+              secureTextEntry={!showConfirmPw}
+              leftIcon="lock"
+              rightIcon={showConfirmPw ? "eye-off" : "eye"}
+              onRightIconPress={() => setShowConfirmPw((v) => !v)}
+              error={errors.confirmPw}
+            />
+          </>
+        )}
 
         {isMerchant && (
           <>
@@ -235,7 +318,6 @@ export default function RegisterScreen() {
           </>
         )}
 
-        {/* CTA */}
         <TouchableOpacity onPress={handleRegister} activeOpacity={0.88} disabled={loading} style={{ marginTop: 8 }}>
           <LinearGradient
             colors={gradientColors}
@@ -244,12 +326,17 @@ export default function RegisterScreen() {
             style={[styles.ctaBtn, { borderRadius: colors.radius }]}
           >
             <Text style={[styles.ctaText, { fontFamily: "Inter_700Bold" }]}>
-              {loading ? t("common.loading") : (isMerchant ? t("auth.registerMerchant") : t("auth.register"))}
+              {loading
+                ? t("common.loading")
+                : mode === "phone"
+                  ? "Envoyer le code"
+                  : isMerchant
+                    ? t("auth.registerMerchant")
+                    : t("auth.register")}
             </Text>
           </LinearGradient>
         </TouchableOpacity>
 
-        {/* Divider + Google */}
         <View style={styles.dividerRow}>
           <View style={[styles.divider, { backgroundColor: "#E5E7EB" }]} />
           <Text style={[styles.dividerText, { color: "#6B7280", fontFamily: "Inter_400Regular" }]}>
@@ -310,4 +397,5 @@ const styles = StyleSheet.create({
   googleText: { fontSize: 15, color: "#0f0f0f" },
   loginLink: { alignItems: "center", marginTop: 20, marginBottom: 20 },
   loginText: { fontSize: 15 },
+  resendBtn: { alignItems: "center", marginTop: 20 },
 });

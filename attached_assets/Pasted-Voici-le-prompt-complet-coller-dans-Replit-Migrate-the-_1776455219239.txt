@@ -1,0 +1,269 @@
+Voici le prompt complet à coller dans Replit :
+
+
+Migrate the entire authentication system to Supabase Auth. The database is already configured with UUID user_id and RLS policies. Do not change any UI or styling.
+
+Step 1 — Install packages :
+bashnpx expo install expo-secure-store
+npx expo install @supabase/supabase-js
+
+Step 2 — Update lib/supabase.ts :
+typescriptimport { createClient } from '@supabase/supabase-js';
+import * as SecureStore from 'expo-secure-store';
+
+const ExpoSecureStoreAdapter = {
+  getItem: (key: string) =>
+    SecureStore.getItemAsync(key),
+  setItem: (key: string, value: string) =>
+    SecureStore.setItemAsync(key, value),
+  removeItem: (key: string) =>
+    SecureStore.deleteItemAsync(key),
+};
+
+export const supabase = createClient(
+  process.env.EXPO_PUBLIC_SUPABASE_URL!,
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
+  {
+    auth: {
+      storage: ExpoSecureStoreAdapter,
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: false,
+    }
+  }
+);
+
+Step 3 — Create lib/auth.ts :
+typescriptimport { supabase } from './supabase';
+import { nanoid } from 'nanoid/non-secure';
+
+// ─── REGISTER WITH EMAIL ──────────────────────────────────
+export const registerWithEmail = async (
+  email: string,
+  password: string,
+  userData: any,
+  userType: 'customer' | 'merchant'
+) => {
+  const { data: authData, error: authError } =
+    await supabase.auth.signUp({ email, password });
+  if (authError) throw authError;
+
+  await createProfile(authData.user!.id, userData, userType);
+  return authData;
+};
+
+// ─── SEND PHONE OTP ───────────────────────────────────────
+export const sendPhoneOTP = async (phone: string) => {
+  const formattedPhone = phone.startsWith('+')
+    ? phone
+    : `+${phone}`;
+  const { error } = await supabase.auth.signInWithOtp({
+    phone: formattedPhone
+  });
+  if (error) throw error;
+};
+
+// ─── VERIFY PHONE OTP + CREATE PROFILE ───────────────────
+export const verifyPhoneOTP = async (
+  phone: string,
+  token: string,
+  userData: any,
+  userType: 'customer' | 'merchant'
+) => {
+  const formattedPhone = phone.startsWith('+')
+    ? phone
+    : `+${phone}`;
+
+  const { data, error } = await supabase.auth.verifyOtp({
+    phone: formattedPhone,
+    token,
+    type: 'sms'
+  });
+  if (error) throw error;
+
+  const userId = data.user!.id;
+  const table = userType === 'customer'
+    ? 'customers'
+    : 'merchants';
+
+  // Check if profile already exists (returning user)
+  const { data: existing } = await supabase
+    .from(table)
+    .select('id')
+    .eq('user_id', userId)
+    .single();
+
+  if (!existing) {
+    await createProfile(userId, userData, userType);
+  }
+
+  return data;
+};
+
+// ─── CREATE PROFILE IN DB ─────────────────────────────────
+const createProfile = async (
+  userId: string,
+  userData: any,
+  userType: 'customer' | 'merchant'
+) => {
+  const qrCode = userType === 'customer'
+    ? `FID-CUST-${nanoid(8).toUpperCase()}`
+    : `FID-MERCH-${nanoid(8).toUpperCase()}`;
+
+  const table = userType === 'customer'
+    ? 'customers'
+    : 'merchants';
+
+  const { error } = await supabase.from(table).insert({
+    id: nanoid(),
+    user_id: userId,
+    qr_code: qrCode,
+    ...userData
+  });
+
+  if (error) throw error;
+};
+
+// ─── LOGIN WITH EMAIL ─────────────────────────────────────
+export const loginWithEmail = async (
+  email: string,
+  password: string
+) => {
+  const { data, error } =
+    await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+  if (error) throw error;
+  return data;
+};
+
+// ─── LOGIN WITH PHONE ─────────────────────────────────────
+export const loginWithPhone = async (phone: string) => {
+  const formattedPhone = phone.startsWith('+')
+    ? phone
+    : `+${phone}`;
+  const { error } = await supabase.auth.signInWithOtp({
+    phone: formattedPhone
+  });
+  if (error) throw error;
+};
+
+// ─── LOGOUT ───────────────────────────────────────────────
+export const logout = async () => {
+  const { error } = await supabase.auth.signOut();
+  if (error) throw error;
+};
+
+// ─── GET CURRENT USER PROFILE ─────────────────────────────
+export const getCurrentProfile = async (
+  userType: 'customer' | 'merchant'
+) => {
+  const { data: { user } } =
+    await supabase.auth.getUser();
+  if (!user) return null;
+
+  const table = userType === 'customer'
+    ? 'customers'
+    : 'merchants';
+
+  const { data, error } = await supabase
+    .from(table)
+    .select('*')
+    .eq('user_id', user.id)
+    .single();
+
+  if (error) throw error;
+  return data;
+};
+
+// ─── FORGOT PASSWORD ──────────────────────────────────────
+export const resetPassword = async (email: string) => {
+  const { error } =
+    await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: 'fideliio://reset-password'
+    });
+  if (error) throw error;
+};
+
+// ─── DELETE ACCOUNT ───────────────────────────────────────
+export const deleteAccount = async (
+  userType: 'customer' | 'merchant'
+) => {
+  const { data: { user } } =
+    await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const table = userType === 'customer'
+    ? 'customers'
+    : 'merchants';
+
+  await supabase
+    .from(table)
+    .delete()
+    .eq('user_id', user.id);
+
+  await supabase.auth.signOut();
+};
+
+Step 4 — Update App.tsx with session listener :
+typescriptimport { useEffect, useState } from 'react';
+import { Session } from '@supabase/supabase-js';
+import { supabase } from './lib/supabase';
+
+const [session, setSession] = useState<Session | null>(null);
+const [loading, setLoading] = useState(true);
+
+useEffect(() => {
+  // Get initial session on app launch
+  supabase.auth.getSession().then(({ data: { session } }) => {
+    setSession(session);
+    setLoading(false);
+  });
+
+  // Listen for login / logout events
+  const { data: { subscription } } =
+    supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+  return () => subscription.unsubscribe();
+}, []);
+
+// Show loading while checking session
+if (loading) return <LoadingScreen />;
+
+// Route based on session
+return session
+  ? <AuthenticatedApp session={session} />
+  : <UnauthenticatedApp />;
+
+Step 5 — Replace ALL existing auth calls :
+
+Every register with email → registerWithEmail()
+Every register with phone → sendPhoneOTP() then verifyPhoneOTP()
+Every login with email → loginWithEmail()
+Every login with phone → loginWithPhone() then verifyPhoneOTP()
+Every logout → logout()
+Every getCurrentUser → getCurrentProfile()
+Every deleteAccount → deleteAccount()
+Remove ALL manual user_id generation — use auth.user.id (UUID) instead
+Phone numbers must always be formatted with + prefix before calling Supabase Auth
+
+
+Step 6 — Test checklist after migration :
+✅ Register customer with email → profile created in customers table
+✅ Register merchant with email → profile created in merchants table
+✅ Register with phone +33652838081 → OTP = 123456 (test mode)
+✅ Login with email → session persists after app restart
+✅ Login with phone → OTP flow works
+✅ Logout → redirects to language screen immediately
+✅ Delete account → removes profile + auth user
+✅ QR code generated at registration and visible on scanner screen
+
+Rules :
+
+Do not change any UI, colors, navigation or screen layouts
+Do not change QR scan logic or points calculation
+Do not change any Supabase table queries except user_id references
+After migration run npx expo start --clear to clear cache

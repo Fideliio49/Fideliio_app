@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   Alert,
   Platform,
-  TouchableWithoutFeedback,
   Keyboard,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -16,17 +15,16 @@ import { LinearGradient } from "expo-linear-gradient";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
-import { useData } from "@/context/DataContext";
 import { Input } from "@/components/ui/Input";
 import { FideliioLogo } from "@/components/FideliioLogo";
+import { loginWithEmail, loginWithPhone, verifyPhoneOTP } from "@/lib/auth";
 
 export default function LoginScreen() {
   const colors = useColors();
   const { t } = useTranslation();
   const router = useRouter();
   const { role } = useLocalSearchParams<{ role: "customer" | "merchant" }>();
-  const { setUser, language, completeOnboarding } = useApp();
-  const { registerCustomer, registerMerchant, addTransaction } = useData();
+  const { completeOnboarding } = useApp();
 
   const isMerchant = role === "merchant";
   const accent = isMerchant ? colors.blue : colors.coral;
@@ -44,9 +42,20 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  const dest = isMerchant ? "/(merchant)/home" : "/(customer)/home";
+
   async function handleSendOtp() {
     if (!phone.trim()) { setErrors({ phone: "Required" }); return; }
-    setOtpSent(true);
+    setLoading(true);
+    try {
+      await loginWithPhone(phone.trim());
+      setOtpSent(true);
+      setErrors({});
+    } catch (e: any) {
+      Alert.alert("Erreur", e.message ?? "Impossible d'envoyer le code.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleLogin() {
@@ -56,51 +65,21 @@ export default function LoginScreen() {
       if (!password.trim()) errs.password = "Required";
     } else {
       if (!phone.trim()) errs.phone = "Required";
+      if (otpSent && !otp.trim()) errs.otp = "Required";
     }
     if (Object.keys(errs).length) { setErrors(errs); return; }
 
     setLoading(true);
     try {
-      await new Promise((r) => setTimeout(r, 700));
-      const userId = `user_${Date.now()}`;
-      const mockUser = {
-        id: userId,
-        role: role as "customer" | "merchant",
-        firstName: isMerchant ? "Commerçant" : "Client",
-        lastName: "Demo",
-        email: mode === "email" ? email : undefined,
-        phone: mode === "phone" ? phone : undefined,
-        language,
-        businessName: isMerchant ? "Mon Commerce" : undefined,
-        businessCategory: isMerchant ? "restaurant" : undefined,
-        pointsRate: isMerchant ? 1 : undefined,
-        totalPoints: isMerchant ? undefined : 250,
-      };
-
-      if (!isMerchant) {
-        const newCustomer = await registerCustomer({
-          userId,
-          firstName: mockUser.firstName,
-          lastName: mockUser.lastName,
-          email: mockUser.email,
-          phone: mockUser.phone,
-          totalPoints: 0,
-        });
-        await addTransaction({ customerId: newCustomer.id, merchantId: "m1", merchantName: "Café Atlas", amount: 180, pointsEarned: 180 });
-        await addTransaction({ customerId: newCustomer.id, merchantId: "m3", merchantName: "Salon Zara", amount: 70, pointsEarned: 70 });
+      if (mode === "email") {
+        await loginWithEmail(email.trim(), password);
       } else {
-        await registerMerchant({
-          userId,
-          businessName: "Mon Commerce",
-          category: "restaurant",
-          pointsRate: 1,
-        });
+        await verifyPhoneOTP(phone.trim(), otp.trim(), {}, role ?? "customer");
       }
-      setUser(mockUser);
       await completeOnboarding();
-      router.replace(isMerchant ? "/(merchant)/home" : "/(customer)/home");
-    } catch {
-      Alert.alert("Error", "Login failed");
+      router.replace(dest as any);
+    } catch (e: any) {
+      Alert.alert("Erreur", e.message ?? "Connexion échouée. Vérifiez vos identifiants.");
     } finally {
       setLoading(false);
     }
@@ -126,12 +105,11 @@ export default function LoginScreen() {
           </Text>
         </View>
 
-        {/* Tab switcher */}
         <View style={[styles.tabRow, { borderBottomColor: colors.border }]}>
           {(["email", "phone"] as const).map((m) => (
             <TouchableOpacity
               key={m}
-              onPress={() => { setMode(m); setErrors({}); }}
+              onPress={() => { setMode(m); setErrors({}); setOtpSent(false); setOtp(""); }}
               style={[styles.tab, { borderBottomColor: mode === m ? accent : "transparent", borderBottomWidth: 2 }]}
             >
               <Text style={[styles.tabText, {
@@ -191,10 +169,11 @@ export default function LoginScreen() {
               {!otpSent ? (
                 <TouchableOpacity
                   onPress={handleSendOtp}
+                  disabled={loading}
                   style={[styles.otpBtn, { borderColor: accent, borderRadius: colors.radius }]}
                 >
                   <Text style={[{ color: accent, fontFamily: "Inter_600SemiBold", fontSize: 14 }]}>
-                    {t("auth.sendOtp")}
+                    {loading ? t("common.loading") : t("auth.sendOtp")}
                   </Text>
                 </TouchableOpacity>
               ) : (
@@ -205,24 +184,27 @@ export default function LoginScreen() {
                   onChangeText={setOtp}
                   keyboardType="number-pad"
                   leftIcon="shield"
+                  error={errors.otp}
                 />
               )}
             </>
           )}
         </View>
 
-        <TouchableOpacity onPress={handleLogin} activeOpacity={0.88} disabled={loading}>
-          <LinearGradient
-            colors={gradientColors}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={[styles.ctaBtn, { borderRadius: colors.radius }]}
-          >
-            <Text style={[styles.ctaText, { fontFamily: "Inter_600SemiBold" }]}>
-              {loading ? t("common.loading") : t("auth.login")}
-            </Text>
-          </LinearGradient>
-        </TouchableOpacity>
+        {(mode === "email" || otpSent) && (
+          <TouchableOpacity onPress={handleLogin} activeOpacity={0.88} disabled={loading}>
+            <LinearGradient
+              colors={gradientColors}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={[styles.ctaBtn, { borderRadius: colors.radius }]}
+            >
+              <Text style={[styles.ctaText, { fontFamily: "Inter_600SemiBold" }]}>
+                {loading ? t("common.loading") : t("auth.login")}
+              </Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
 
         <View style={styles.dividerRow}>
           <View style={[styles.divider, { backgroundColor: colors.border }]} />

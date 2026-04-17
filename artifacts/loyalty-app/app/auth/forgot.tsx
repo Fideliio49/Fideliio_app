@@ -17,6 +17,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useColors } from "@/hooks/useColors";
 import { Input } from "@/components/ui/Input";
 import { FideliioLogo } from "@/components/FideliioLogo";
+import { resetPassword } from "@/lib/auth";
 
 export default function ForgotScreen() {
   const colors = useColors();
@@ -36,9 +37,14 @@ export default function ForgotScreen() {
   async function handleSend() {
     if (!value.trim()) return;
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 800));
-    setLoading(false);
-    setSent(true);
+    try {
+      await resetPassword(value.trim());
+      setSent(true);
+    } catch (e: any) {
+      Alert.alert("Erreur", e.message ?? "Une erreur s'est produite.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -85,7 +91,7 @@ export default function ForgotScreen() {
           <>
             <Input
               label={t("auth.emailOrPhone")}
-              placeholder="email@exemple.com ou +212..."
+              placeholder="email@exemple.com"
               value={value}
               onChangeText={setValue}
               leftIcon="mail"

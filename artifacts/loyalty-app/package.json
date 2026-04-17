@@ -58,6 +58,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.103.2",
     "expo-camera": "~17.0.10",
+    "expo-secure-store": "~15.0.8",
     "i18next": "^26.0.4",
     "react-i18next": "^17.0.2",
     "react-native-qrcode-svg": "^6.3.21"

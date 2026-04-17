@@ -1,7 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { I18nManager } from "react-native";
+import { Session } from "@supabase/supabase-js";
 import i18n, { applyRTL } from "@/i18n";
+import { supabase } from "@/lib/supabase";
+import * as AuthLib from "@/lib/auth";
 
 export type Language = "fr" | "ar" | "en";
 export type UserRole = "customer" | "merchant";
@@ -51,7 +54,6 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const STORAGE_KEYS = {
-  USER: "@loyalty_user",
   LANGUAGE: "@loyalty_language",
   ONBOARDED: "@loyalty_onboarded",
   CUSTOMER_THEME: "@customer_theme",
@@ -61,6 +63,24 @@ const STORAGE_KEYS = {
 
 const DEFAULT_ACCENT = "#C85A17";
 const DEFAULT_MERCHANT_ACCENT = "#2D9CDB";
+
+function buildUserFromSession(session: Session, fallbackLanguage: Language): User {
+  const meta = session.user.user_metadata ?? {};
+  return {
+    id: session.user.id,
+    role: (meta.role ?? "customer") as UserRole,
+    firstName: meta.firstName ?? "",
+    lastName: meta.lastName ?? "",
+    email: session.user.email,
+    phone: session.user.phone,
+    language: (meta.language ?? fallbackLanguage) as Language,
+    businessName: meta.businessName ?? undefined,
+    businessCategory: meta.businessCategory ?? undefined,
+    pointsRate: meta.pointsRate ?? undefined,
+    totalPoints: meta.totalPoints ?? undefined,
+    logoUrl: meta.logoUrl ?? undefined,
+  };
+}
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUserState] = useState<User | null>(null);
@@ -74,14 +94,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const isRTL = language === "ar";
 
   useEffect(() => {
-    loadStoredData();
+    loadSettings().then((resolvedLang) => {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session) {
+          setUserState(buildUserFromSession(session, resolvedLang));
+        }
+        setIsLoading(false);
+      });
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        setUserState((prev) => buildUserFromSession(session, prev ? prev.language : "fr"));
+      } else {
+        setUserState(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  async function loadStoredData() {
+  async function loadSettings(): Promise<Language> {
     try {
-      const [storedUser, storedLang, storedOnboarded, storedTheme, storedAccent, storedMerchantAccent] =
+      const [storedLang, storedOnboarded, storedTheme, storedAccent, storedMerchantAccent] =
         await Promise.all([
-          AsyncStorage.getItem(STORAGE_KEYS.USER),
           AsyncStorage.getItem(STORAGE_KEYS.LANGUAGE),
           AsyncStorage.getItem(STORAGE_KEYS.ONBOARDED),
           AsyncStorage.getItem(STORAGE_KEYS.CUSTOMER_THEME),
@@ -89,21 +125,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
           AsyncStorage.getItem(STORAGE_KEYS.MERCHANT_ACCENT_COLOR),
         ]);
 
+      let resolvedLang: Language = "fr";
       if (storedLang) {
-        const lang = storedLang as Language;
-        setLanguageState(lang);
-        i18n.changeLanguage(lang);
-        applyRTL(lang);
+        resolvedLang = storedLang as Language;
+        setLanguageState(resolvedLang);
+        i18n.changeLanguage(resolvedLang);
+        applyRTL(resolvedLang);
       }
-      if (storedUser) setUserState(JSON.parse(storedUser));
       if (storedOnboarded === "true") setIsOnboarded(true);
       if (storedTheme) setColorThemeState(storedTheme as ColorTheme);
       if (storedAccent) setAccentColorState(storedAccent);
       if (storedMerchantAccent) setMerchantAccentColorState(storedMerchantAccent);
+
+      return resolvedLang;
     } catch (e) {
-      console.warn("Error loading stored data:", e);
-    } finally {
-      setIsLoading(false);
+      console.warn("Error loading settings:", e);
+      return "fr";
     }
   }
 
@@ -112,28 +149,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await i18n.changeLanguage(lang);
     applyRTL(lang);
     await AsyncStorage.setItem(STORAGE_KEYS.LANGUAGE, lang);
-    if (user) {
-      const updatedUser = { ...user, language: lang };
-      setUserState(updatedUser);
-      await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser));
-    }
   }
 
   function setUser(newUser: User | null) {
     setUserState(newUser);
-    if (newUser) {
-      AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(newUser));
-    } else {
-      AsyncStorage.removeItem(STORAGE_KEYS.USER);
-    }
   }
 
   async function logout() {
+    await AuthLib.logout();
     setUserState(null);
-    await AsyncStorage.removeItem(STORAGE_KEYS.USER);
   }
 
   async function deleteAccount() {
+    if (user) {
+      try {
+        await AuthLib.deleteAccount(user.role);
+      } catch (e) {
+        console.warn("deleteAccount error:", e);
+      }
+    }
     setUserState(null);
     setIsOnboarded(false);
     setColorThemeState("light");
