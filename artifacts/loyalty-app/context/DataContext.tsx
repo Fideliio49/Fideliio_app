@@ -143,10 +143,28 @@ function rowToCustomer(r: any): CustomerData {
     lastName: r.last_name,
     phone: r.phone ?? undefined,
     email: r.email ?? undefined,
-    totalPoints: r.total_points,
+    totalPoints: 0,
     tier: r.tier,
     qrCode: r.qr_code ?? undefined,
   };
+}
+
+function computeTotalPoints(
+  customerId: string,
+  txs: Transaction[],
+  reds: Redemption[],
+  rws: Reward[]
+): number {
+  const earned = txs
+    .filter((t) => t.customerId === customerId)
+    .reduce((sum, t) => sum + t.pointsEarned, 0);
+  const redeemed = reds
+    .filter((r) => r.customerId === customerId)
+    .reduce((sum, r) => {
+      const rw = rws.find((rw) => rw.id === r.rewardId);
+      return sum + (rw?.pointsRequired ?? 0);
+    }, 0);
+  return Math.max(0, earned - redeemed);
 }
 
 function rowToReward(r: any): Reward {
@@ -210,11 +228,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
         supabase.from("transactions").select("*").order("created_at", { ascending: false }),
         supabase.from("redemptions").select("*").order("redeemed_at", { ascending: false }),
       ]);
+      const txList = t ? t.map(rowToTransaction) : [];
+      const redList = red ? red.map(rowToRedemption) : [];
+      const rwList = r ? r.map(rowToReward) : [];
       if (m) setMerchants(m.map(rowToMerchant));
-      if (c) setCustomers(c.map(rowToCustomer));
-      if (r) setRewards(r.map(rowToReward));
-      if (t) setTransactions(t.map(rowToTransaction));
-      if (red) setRedemptions(red.map(rowToRedemption));
+      if (c) setCustomers(c.map((row) => {
+        const base = rowToCustomer(row);
+        const pts = computeTotalPoints(base.id, txList, redList, rwList);
+        return { ...base, totalPoints: pts, tier: getTier(pts) };
+      }));
+      if (r) setRewards(rwList);
+      if (t) setTransactions(txList);
+      if (red) setRedemptions(redList);
     } catch (e) {
       console.warn("Supabase loadData error:", e);
     }
@@ -239,12 +264,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const newT: Transaction = { ...t, id: newId, createdAt, multiplier: t.multiplier ?? 1 };
     setTransactions((prev) => [newT, ...prev]);
 
-    // Update customer total_points in DB + memory
+    // Update customer totalPoints in memory (computed from transactions) + tier in DB
     const custIdx = customers.findIndex((c) => c.id === t.customerId);
     if (custIdx !== -1) {
       const newPoints = customers[custIdx].totalPoints + t.pointsEarned;
       const newTier = getTier(newPoints);
-      await supabase.from("customers").update({ total_points: newPoints, tier: newTier }).eq("id", t.customerId);
+      await supabase.from("customers").update({ tier: newTier }).eq("id", t.customerId);
       setCustomers((prev) => prev.map((c) => c.id === t.customerId ? { ...c, totalPoints: newPoints, tier: newTier } : c));
     }
   }
@@ -309,7 +334,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (custIdx !== -1) {
         const newPoints = Math.max(0, customers[custIdx].totalPoints - reward.pointsRequired);
         const newTier = getTier(newPoints);
-        await supabase.from("customers").update({ total_points: newPoints, tier: newTier }).eq("id", r.customerId);
+        await supabase.from("customers").update({ tier: newTier }).eq("id", r.customerId);
         setCustomers((prev) => prev.map((c) => c.id === r.customerId ? { ...c, totalPoints: newPoints, tier: newTier } : c));
       }
     }
@@ -320,7 +345,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (custIdx === -1) return;
     const newPoints = Math.max(0, customers[custIdx].totalPoints + delta);
     const newTier = getTier(newPoints);
-    await supabase.from("customers").update({ total_points: newPoints, tier: newTier }).eq("id", customerId);
+    await supabase.from("customers").update({ tier: newTier }).eq("id", customerId);
     setCustomers((prev) => prev.map((c) => c.id === customerId ? { ...c, totalPoints: newPoints, tier: newTier } : c));
   }
 
@@ -454,7 +479,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       last_name: newC.lastName,
       phone: newC.phone ?? null,
       email: newC.email ?? null,
-      total_points: newC.totalPoints,
       tier: newC.tier,
       qr_code: newC.qrCode,
     });
@@ -500,7 +524,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (data.lastName !== undefined) patch.last_name = data.lastName;
     if (data.phone !== undefined) patch.phone = data.phone;
     if (data.email !== undefined) patch.email = data.email;
-    if (data.totalPoints !== undefined) patch.total_points = data.totalPoints;
     if (data.tier !== undefined) patch.tier = data.tier;
     const { error } = await supabase.from("customers").update(patch).eq("user_id", userId);
     if (error) { console.warn("updateCustomerProfile error:", error); return; }

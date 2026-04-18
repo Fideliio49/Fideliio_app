@@ -139,7 +139,6 @@ const createProfile = async (
       last_name: userData.lastName,
       phone: userData.phone ?? null,
       email: userData.email ?? null,
-      total_points: 0,
       tier: 'bronze',
       qr_code: generateQrCode('FID-CUST'),
     });
