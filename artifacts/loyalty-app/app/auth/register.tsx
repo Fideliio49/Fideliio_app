@@ -17,7 +17,9 @@ import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { Input } from "@/components/ui/Input";
 import { FideliioLogo } from "@/components/FideliioLogo";
-import { registerWithEmail, verifyEmailOTP, sendPhoneOTP, verifyPhoneOTP } from "@/lib/auth";
+import { sendPhoneOTP, verifyPhoneOTP } from "@/lib/auth";
+import { supabase } from "@/lib/supabase";
+import { nanoid } from "nanoid/non-secure";
 
 const CATEGORIES = ["restaurant", "clothing", "hairSalon", "hotel", "other"] as const;
 
@@ -59,6 +61,7 @@ export default function RegisterScreen() {
     if (mode === "email") {
       if (!email.trim()) errs.email = t("auth.atLeastOne");
       if (!password.trim()) errs.password = "Required";
+      if (password.length < 6) errs.password = "Au moins 6 caractères";
       if (password !== confirmPw) errs.confirmPw = t("auth.passwordsMatch");
     } else {
       if (!phone.trim()) errs.phone = t("auth.atLeastOne");
@@ -68,21 +71,61 @@ export default function RegisterScreen() {
 
     setLoading(true);
     try {
-      const userData = isMerchant
-        ? { firstName, lastName, email: email || undefined, businessName, category, pointsRate: 1 }
-        : { firstName, lastName, email: email || undefined, phone: phone || undefined };
-
       if (mode === "email") {
-        await registerWithEmail(email.trim(), userData, role ?? "customer");
-        setPhoneStep("otp");
-        setErrors({});
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email: email.trim(),
+          password,
+          options: { data: { first_name: firstName, last_name: lastName } },
+        });
+        if (authError) throw authError;
+
+        const userId = authData.user!.id;
+        const qrCode = isMerchant
+          ? `FID-MERCH-${nanoid(8).toUpperCase()}`
+          : `FID-CUST-${nanoid(8).toUpperCase()}`;
+
+        if (isMerchant) {
+          const { error: insertError } = await supabase.from("merchants").insert({
+            id: nanoid(),
+            user_id: userId,
+            business_name: businessName,
+            category,
+            logo_url: null,
+            points_rate: 1,
+            total_customers: 0,
+            points_this_month: 0,
+            rewards_redeemed: 0,
+            qr_code: qrCode,
+          });
+          if (insertError) throw insertError;
+        } else {
+          const { error: insertError } = await supabase.from("customers").insert({
+            id: nanoid(),
+            user_id: userId,
+            first_name: firstName,
+            last_name: lastName,
+            email: email.trim(),
+            phone: phone || null,
+            tier: "bronze",
+            qr_code: qrCode,
+          });
+          if (insertError) throw insertError;
+        }
+
+        await completeOnboarding();
+        router.replace(dest as any);
       } else {
         await sendPhoneOTP(phone.trim());
         setPhoneStep("otp");
         setErrors({});
       }
     } catch (e: any) {
-      Alert.alert("Erreur", e.message ?? "Inscription échouée.");
+      const msg: string = e?.message ?? "";
+      if (msg.includes("already registered") || msg.includes("already been registered")) {
+        Alert.alert("Erreur", "Cet email est déjà utilisé.");
+      } else {
+        Alert.alert("Erreur", msg || "Inscription échouée.");
+      }
     } finally {
       setLoading(false);
     }
@@ -97,11 +140,7 @@ export default function RegisterScreen() {
         ? { firstName, lastName, businessName, category, pointsRate: 1 }
         : { firstName, lastName, phone: phone || undefined };
 
-      if (mode === "email") {
-        await verifyEmailOTP(email.trim(), otpCode.trim(), userData, role ?? "customer");
-      } else {
-        await verifyPhoneOTP(phone.trim(), otpCode.trim(), userData, role ?? "customer");
-      }
+      await verifyPhoneOTP(phone.trim(), otpCode.trim(), userData, role ?? "customer");
       await completeOnboarding();
       router.replace(dest as any);
     } catch (e: any) {
@@ -161,14 +200,7 @@ export default function RegisterScreen() {
           <TouchableOpacity
             onPress={async () => {
               try {
-                if (mode === "email") {
-                  const userData = isMerchant
-                    ? { firstName, lastName, businessName, category, pointsRate: 1 }
-                    : { firstName, lastName };
-                  await registerWithEmail(email.trim(), userData, role ?? "customer");
-                } else {
-                  await sendPhoneOTP(phone.trim());
-                }
+                await sendPhoneOTP(phone.trim());
                 Alert.alert("OK", "Code renvoyé !");
               } catch { Alert.alert("Erreur", "Impossible de renvoyer le code."); }
             }}
@@ -343,9 +375,7 @@ export default function RegisterScreen() {
                 ? t("common.loading")
                 : mode === "phone"
                   ? "Envoyer le code"
-                  : isMerchant
-                    ? t("auth.registerMerchant")
-                    : t("auth.register")}
+                  : "Créer un compte"}
             </Text>
           </LinearGradient>
         </TouchableOpacity>

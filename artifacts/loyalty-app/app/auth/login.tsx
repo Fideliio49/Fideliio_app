@@ -34,65 +34,52 @@ export default function LoginScreen() {
 
   const [mode, setMode] = useState<"email" | "phone">("email");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const dest = isMerchant ? "/(merchant)/home" : "/(customer)/home";
 
   async function handleSendOtp() {
+    if (!phone.trim()) { setErrors({ phone: "Required" }); return; }
+    setLoading(true);
+    try {
+      const formatted = phone.trim().startsWith("+") ? phone.trim() : `+${phone.trim()}`;
+      const { error } = await supabase.auth.signInWithOtp({
+        phone: formatted,
+        options: { shouldCreateUser: false },
+      });
+      if (error) throw error;
+      setOtpSent(true);
+      setErrors({});
+    } catch (e: any) {
+      Alert.alert("Erreur", e.message ?? "Impossible d'envoyer le code.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleLogin() {
     const errs: Record<string, string> = {};
     if (mode === "email") {
       if (!email.trim()) errs.email = "Required";
+      if (!password.trim()) errs.password = "Required";
     } else {
       if (!phone.trim()) errs.phone = "Required";
+      if (otpSent && !otp.trim()) errs.otp = "Required";
     }
     if (Object.keys(errs).length) { setErrors(errs); return; }
 
     setLoading(true);
     try {
       if (mode === "email") {
-        const { error } = await supabase.auth.signInWithOtp({
+        const { error } = await supabase.auth.signInWithPassword({
           email: email.trim(),
-          options: { shouldCreateUser: false },
-        });
-        if (error) throw error;
-      } else {
-        const formatted = phone.trim().startsWith("+") ? phone.trim() : `+${phone.trim()}`;
-        const { error } = await supabase.auth.signInWithOtp({
-          phone: formatted,
-          options: { shouldCreateUser: false },
-        });
-        if (error) throw error;
-      }
-      setOtpSent(true);
-      setErrors({});
-    } catch (e: any) {
-      const msg: string = e?.message ?? "";
-      if (msg.toLowerCase().includes("not found") || msg.toLowerCase().includes("invalid")) {
-        Alert.alert("Erreur", mode === "email"
-          ? "Aucun compte trouvé avec cet email."
-          : "Aucun compte trouvé avec ce numéro.");
-      } else {
-        Alert.alert("Erreur", msg || "Impossible d'envoyer le code.");
-      }
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleVerifyOtp() {
-    if (!otp.trim()) { setErrors({ otp: "Required" }); return; }
-
-    setLoading(true);
-    try {
-      if (mode === "email") {
-        const { error } = await supabase.auth.verifyOtp({
-          email: email.trim(),
-          token: otp.trim(),
-          type: "email",
+          password,
         });
         if (error) throw error;
       } else {
@@ -108,23 +95,16 @@ export default function LoginScreen() {
       router.replace(dest as any);
     } catch (e: any) {
       const msg: string = e?.message ?? "";
-      if (msg.toLowerCase().includes("expired")) {
-        setErrors({ otp: "Code expiré. Demandez un nouveau code." });
-      } else if (msg.toLowerCase().includes("invalid")) {
-        setErrors({ otp: "Code incorrect. Vérifiez et réessayez." });
+      if (msg.includes("Invalid login credentials")) {
+        Alert.alert("Erreur", "Email ou mot de passe incorrect.");
+      } else if (msg.includes("Email not confirmed")) {
+        Alert.alert("Erreur", "Veuillez confirmer votre email.");
       } else {
-        Alert.alert("Erreur", msg || "Erreur de vérification.");
+        Alert.alert("Erreur", msg || "Connexion échouée. Vérifiez vos identifiants.");
       }
     } finally {
       setLoading(false);
     }
-  }
-
-  function handleTabSwitch(m: "email" | "phone") {
-    setMode(m);
-    setErrors({});
-    setOtpSent(false);
-    setOtp("");
   }
 
   return (
@@ -151,7 +131,7 @@ export default function LoginScreen() {
           {(["email", "phone"] as const).map((m) => (
             <TouchableOpacity
               key={m}
-              onPress={() => handleTabSwitch(m)}
+              onPress={() => { setMode(m); setErrors({}); setOtpSent(false); setOtp(""); }}
               style={[styles.tab, { borderBottomColor: mode === m ? accent : "transparent", borderBottomWidth: 2 }]}
             >
               <Text style={[styles.tabText, {
@@ -176,19 +156,26 @@ export default function LoginScreen() {
                 autoCapitalize="none"
                 leftIcon="mail"
                 error={errors.email}
-                editable={!otpSent}
               />
-              {otpSent && (
-                <Input
-                  label={t("auth.otp")}
-                  placeholder="123456"
-                  value={otp}
-                  onChangeText={setOtp}
-                  keyboardType="number-pad"
-                  leftIcon="shield"
-                  error={errors.otp}
-                />
-              )}
+              <Input
+                label={t("auth.password")}
+                placeholder="••••••••"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+                leftIcon="lock"
+                rightIcon={showPassword ? "eye-off" : "eye"}
+                onRightIconPress={() => setShowPassword((v) => !v)}
+                error={errors.password}
+              />
+              <TouchableOpacity
+                onPress={() => router.push(`/auth/forgot?role=${role}`)}
+                style={styles.forgotBtn}
+              >
+                <Text style={[styles.forgotText, { color: accent, fontFamily: "Inter_400Regular" }]}>
+                  {t("auth.forgotPassword")}
+                </Text>
+              </TouchableOpacity>
             </>
           ) : (
             <>
@@ -200,9 +187,18 @@ export default function LoginScreen() {
                 keyboardType="phone-pad"
                 leftIcon="smartphone"
                 error={errors.phone}
-                editable={!otpSent}
               />
-              {otpSent && (
+              {!otpSent ? (
+                <TouchableOpacity
+                  onPress={handleSendOtp}
+                  disabled={loading}
+                  style={[styles.otpBtn, { borderColor: accent, borderRadius: colors.radius }]}
+                >
+                  <Text style={[{ color: accent, fontFamily: "Inter_600SemiBold", fontSize: 14 }]}>
+                    {loading ? t("common.loading") : t("auth.sendOtp")}
+                  </Text>
+                </TouchableOpacity>
+              ) : (
                 <Input
                   label={t("auth.otp")}
                   placeholder="123456"
@@ -217,26 +213,20 @@ export default function LoginScreen() {
           )}
         </View>
 
-        <TouchableOpacity
-          onPress={otpSent ? handleVerifyOtp : handleSendOtp}
-          activeOpacity={0.88}
-          disabled={loading}
-        >
-          <LinearGradient
-            colors={gradientColors}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={[styles.ctaBtn, { borderRadius: colors.radius }]}
-          >
-            <Text style={[styles.ctaText, { fontFamily: "Inter_600SemiBold" }]}>
-              {loading
-                ? t("common.loading")
-                : otpSent
-                ? t("auth.login")
-                : "Recevoir mon code"}
-            </Text>
-          </LinearGradient>
-        </TouchableOpacity>
+        {(mode === "email" || otpSent) && (
+          <TouchableOpacity onPress={handleLogin} activeOpacity={0.88} disabled={loading}>
+            <LinearGradient
+              colors={gradientColors}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={[styles.ctaBtn, { borderRadius: colors.radius }]}
+            >
+              <Text style={[styles.ctaText, { fontFamily: "Inter_600SemiBold" }]}>
+                {loading ? t("common.loading") : t("auth.login")}
+              </Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
 
         <View style={styles.dividerRow}>
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
@@ -279,6 +269,8 @@ const styles = StyleSheet.create({
   tab: { flex: 1, alignItems: "center", paddingBottom: 10 },
   tabText: { fontSize: 15 },
   form: {},
+  forgotBtn: { alignSelf: "flex-end", marginBottom: 16, marginTop: 4 },
+  forgotText: { fontSize: 14 },
   otpBtn: { borderWidth: 1.5, paddingVertical: 13, alignItems: "center", marginBottom: 12 },
   ctaBtn: { paddingVertical: 16, alignItems: "center", marginTop: 4 },
   ctaText: { color: "#fff", fontSize: 16 },

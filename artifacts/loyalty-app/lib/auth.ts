@@ -160,31 +160,11 @@ const createProfile = async (
   }
 };
 
-// ─── LOGIN WITH EMAIL OTP (no password — login only) ─────────────────────────
-export const loginWithEmail = async (email: string) => {
-  const { error } = await supabase.auth.signInWithOtp({
-    email,
-    options: { shouldCreateUser: false },
-  });
+// ─── LOGIN WITH EMAIL + PASSWORD ──────────────────────────────────────────────
+export const loginWithEmail = async (email: string, password: string) => {
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) throw error;
-};
-
-// ─── VERIFY LOGIN OTP (email or phone — no profile creation) ──────────────────
-export const verifyLoginOTP = async (
-  contact: string,
-  token: string,
-  contactType: 'email' | 'phone'
-) => {
-  if (contactType === 'email') {
-    const { data, error } = await supabase.auth.verifyOtp({ email: contact, token, type: 'email' });
-    if (error) throw error;
-    return data;
-  } else {
-    const formatted = contact.startsWith('+') ? contact : `+${contact}`;
-    const { data, error } = await supabase.auth.verifyOtp({ phone: formatted, token, type: 'sms' });
-    if (error) throw error;
-    return data;
-  }
+  return data;
 };
 
 // ─── LOGIN WITH PHONE OTP (login only, no new account) ───────────────────────
