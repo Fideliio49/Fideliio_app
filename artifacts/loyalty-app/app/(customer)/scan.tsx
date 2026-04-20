@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Platform,
   ScrollView,
   StatusBar,
+  ActivityIndicator,
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 import { useFocusEffect } from "expo-router";
@@ -15,16 +16,17 @@ import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
-import { useData } from "@/context/DataContext";
+import { supabase } from "@/lib/supabase";
 
 export default function CustomerQrCodeScreen() {
   const colors = useColors();
   const { user, colorTheme } = useApp();
-  const { getCustomerByUserId } = useData();
   const insets = useSafeAreaInsets();
 
-  const customer = user ? getCustomerByUserId(user.id) : null;
-  const qrCodeValue = customer?.qrCode ?? `FID-CUST-${user?.id ?? "UNKNOWN"}`;
+  const [customer, setCustomer] = useState<any>(null);
+  const [totalPoints, setTotalPoints] = useState(0);
+  const [loading, setLoading] = useState(true);
+
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : 0;
   const isDark = colorTheme === "dark";
@@ -35,10 +37,49 @@ export default function CustomerQrCodeScreen() {
       if (Platform.OS === "android") {
         StatusBar.setBackgroundColor(isDark ? "#121212" : "#F9FAFB", true);
       }
-    }, [isDark])
+      loadCustomer();
+    }, [isDark, user]),
   );
 
+  async function loadCustomer() {
+    if (!user?.id) return;
+    try {
+      setLoading(true);
+
+      // Charger le profil client depuis Supabase
+      const { data: customerData, error } = await supabase
+        .from("customers")
+        .select("*")
+        .eq("user_id", user.id)
+        .single();
+
+      if (error) {
+        console.error("Erreur chargement client:", error);
+        return;
+      }
+
+      setCustomer(customerData);
+
+      // Charger les points totaux depuis la vue
+      const { data: pointsData } = await supabase
+        .from("customer_total_points")
+        .select("total_points")
+        .eq("customer_id", customerData.id)
+        .single();
+
+      setTotalPoints(pointsData?.total_points ?? 0);
+    } catch (err) {
+      console.error("Erreur:", err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // QR code = valeur exacte depuis la base de données
+  const qrCodeValue = customer?.qr_code ?? null;
+
   async function handleShare() {
+    if (!qrCodeValue) return;
     try {
       await Share.share({
         message: `Mon code Fideliio : ${qrCodeValue}`,
@@ -46,24 +87,89 @@ export default function CustomerQrCodeScreen() {
     } catch {}
   }
 
+  if (loading) {
+    return (
+      <View
+        style={[
+          styles.container,
+          {
+            backgroundColor: colors.background,
+            justifyContent: "center",
+            alignItems: "center",
+          },
+        ]}
+      >
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  if (!qrCodeValue) {
+    return (
+      <View
+        style={[
+          styles.container,
+          {
+            backgroundColor: colors.background,
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 24,
+          },
+        ]}
+      >
+        <Feather name="alert-circle" size={48} color={colors.mutedForeground} />
+        <Text
+          style={[
+            styles.title,
+            { color: colors.foreground, textAlign: "center", marginTop: 16 },
+          ]}
+        >
+          QR Code non disponible
+        </Text>
+        <Text
+          style={[
+            styles.subtitle,
+            { color: colors.mutedForeground, textAlign: "center" },
+          ]}
+        >
+          Veuillez vous reconnecter pour générer votre QR code.
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
-      contentContainerStyle={[styles.scroll, { paddingTop: topPad + 12, paddingBottom: 100 + bottomPad }]}
+      contentContainerStyle={[
+        styles.scroll,
+        { paddingTop: topPad + 12, paddingBottom: 100 + bottomPad },
+      ]}
       showsVerticalScrollIndicator={false}
     >
       <Text
-        style={[styles.title, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}
+        style={[
+          styles.title,
+          { color: colors.foreground, fontFamily: "Inter_700Bold" },
+        ]}
       >
         Mon QR Code
       </Text>
       <Text
-        style={[styles.subtitle, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}
+        style={[
+          styles.subtitle,
+          { color: colors.mutedForeground, fontFamily: "Inter_400Regular" },
+        ]}
       >
         Présentez ce code lors de chaque achat
       </Text>
 
-      <View style={[styles.card, { backgroundColor: colors.card, shadowColor: "#000" }]}>
+      <View
+        style={[
+          styles.card,
+          { backgroundColor: colors.card, shadowColor: "#000" },
+        ]}
+      >
         <View style={styles.qrWrap}>
           <QRCode
             value={qrCodeValue}
@@ -74,35 +180,54 @@ export default function CustomerQrCodeScreen() {
         </View>
 
         <Text
-          style={[styles.userName, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}
+          style={[
+            styles.userName,
+            { color: colors.foreground, fontFamily: "Inter_700Bold" },
+          ]}
         >
-          {user?.firstName} {user?.lastName}
+          {customer?.first_name} {customer?.last_name}
         </Text>
 
         <View style={styles.pointsPill}>
           <Feather name="star" size={14} color="#F9A602" />
           <Text
-            style={[styles.pointsText, { color: "#F9A602", fontFamily: "Inter_700Bold" }]}
+            style={[
+              styles.pointsText,
+              { color: "#F9A602", fontFamily: "Inter_700Bold" },
+            ]}
           >
-            {customer?.totalPoints ?? 0} points
+            {totalPoints} points
           </Text>
         </View>
 
         <Text
-          style={[styles.codeText, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}
+          style={[
+            styles.codeText,
+            { color: colors.mutedForeground, fontFamily: "Inter_400Regular" },
+          ]}
         >
           {qrCodeValue}
         </Text>
       </View>
 
       <View
-        style={[styles.hintBox, { backgroundColor: colors.primary + "12", borderColor: colors.primary + "30" }]}
+        style={[
+          styles.hintBox,
+          {
+            backgroundColor: colors.primary + "12",
+            borderColor: colors.primary + "30",
+          },
+        ]}
       >
         <Feather name="info" size={16} color={colors.primary} />
         <Text
-          style={[styles.hintText, { color: colors.primary, fontFamily: "Inter_400Regular" }]}
+          style={[
+            styles.hintText,
+            { color: colors.primary, fontFamily: "Inter_400Regular" },
+          ]}
         >
-          Le marchand scannera ce QR code pour valider votre achat et créditer vos points.
+          Le marchand scannera ce QR code pour valider votre achat et créditer
+          vos points.
         </Text>
       </View>
 
@@ -120,7 +245,10 @@ export default function CustomerQrCodeScreen() {
       >
         <Feather name="share-2" size={18} color={colors.primary} />
         <Text
-          style={[styles.shareBtnText, { color: colors.primary, fontFamily: "Inter_600SemiBold" }]}
+          style={[
+            styles.shareBtnText,
+            { color: colors.primary, fontFamily: "Inter_600SemiBold" },
+          ]}
         >
           Partager mon QR Code
         </Text>

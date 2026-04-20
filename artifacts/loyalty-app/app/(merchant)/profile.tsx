@@ -8,11 +8,8 @@ import {
   Platform,
   Switch,
   StatusBar,
-  TextInput,
-  TouchableWithoutFeedback,
-  Keyboard,
+  ScrollView,
 } from "react-native";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import QRCode from "react-native-qrcode-svg";
 import { useTranslation } from "react-i18next";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -20,61 +17,170 @@ import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useApp, Language, ACCENT_COLORS } from "@/context/AppContext";
-import { KEYBOARD_TOOLBAR_ID } from "@/constants/keyboard";
-import { useData } from "@/context/DataContext";
-import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
+import { supabase } from "@/lib/supabase";
 import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
 
-
-const LANGS: { code: Language; label: string }[] = [
-  { code: "fr", label: "Français" },
-  { code: "ar", label: "العربية" },
-  { code: "en", label: "English" },
+const LANGS: { code: Language; label: string; flag: string }[] = [
+  { code: "fr", label: "Français", flag: "🇫🇷" },
+  { code: "ar", label: "العربية", flag: "🇲🇦" },
+  { code: "en", label: "English", flag: "🇬🇧" },
 ];
 
 const CATEGORY_KEYS = ["restaurant", "clothing", "hairSalon", "hotel", "other"] as const;
 
+// ── Composant ligne style Telegram ──────────────────────────
+function SettingsRow({
+  icon,
+  iconColor,
+  label,
+  value,
+  onPress,
+  rightElement,
+  destructive = false,
+  isRTL = false,
+}: {
+  icon: keyof typeof Feather.glyphMap;
+  iconColor: string;
+  label: string;
+  value?: string;
+  onPress?: () => void;
+  rightElement?: React.ReactNode;
+  destructive?: boolean;
+  isRTL?: boolean;
+}) {
+  const colors = useColors();
+  const rowDir = isRTL ? "row-reverse" : "row";
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={onPress ? 0.6 : 1}
+      style={[styles.settingsRow, { flexDirection: rowDir }]}
+    >
+      <View style={[styles.rowIcon, { backgroundColor: iconColor + "18" }]}>
+        <Feather name={icon} size={18} color={iconColor} />
+      </View>
+      <Text
+        style={[
+          styles.rowLabel,
+          {
+            color: destructive ? "#E74C3C" : colors.foreground,
+            fontFamily: "Inter_400Regular",
+            flex: 1,
+            textAlign: isRTL ? "right" : "left",
+          },
+        ]}
+      >
+        {label}
+      </Text>
+      {value && (
+        <Text style={[styles.rowValue, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
+          {value}
+        </Text>
+      )}
+      {rightElement}
+      {onPress && !rightElement && (
+        <Feather
+          name={isRTL ? "chevron-left" : "chevron-right"}
+          size={16}
+          color={colors.mutedForeground}
+        />
+      )}
+    </TouchableOpacity>
+  );
+}
+
+// ── Section style Telegram ──────────────────────────────────
+function SettingsSection({
+  title,
+  children,
+  isRTL = false,
+}: {
+  title?: string;
+  children: React.ReactNode;
+  isRTL?: boolean;
+}) {
+  const colors = useColors();
+  return (
+    <View style={styles.sectionWrap}>
+      {title && (
+        <Text
+          style={[
+            styles.sectionHeader,
+            {
+              color: colors.mutedForeground,
+              fontFamily: "Inter_600SemiBold",
+              textAlign: isRTL ? "right" : "left",
+            },
+          ]}
+        >
+          {title}
+        </Text>
+      )}
+      <View style={[styles.sectionCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        {children}
+      </View>
+    </View>
+  );
+}
+
+// ── Séparateur ──────────────────────────────────────────────
+function Separator() {
+  const colors = useColors();
+  return <View style={[styles.separator, { backgroundColor: colors.border }]} />;
+}
+
 export default function MerchantProfileScreen() {
   const colors = useColors();
   const { t } = useTranslation();
-  const { user, setUser, language, setLanguage, logout, deleteAccount, colorTheme, setColorTheme, merchantAccentColor, setMerchantAccentColor } = useApp();
+  const {
+    user,
+    language,
+    setLanguage,
+    logout,
+    deleteAccount,
+    colorTheme,
+    setColorTheme,
+    merchantAccentColor,
+    setMerchantAccentColor,
+    isRTL,
+  } = useApp();
   const router = useRouter();
-  const { getMerchantByUserId, updateMerchant } = useData();
   const insets = useSafeAreaInsets();
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
-  const merchant = user ? getMerchantByUserId(user.id) : null;
   const isDark = colorTheme === "dark";
+  const textAlign = isRTL ? "right" : "left";
+  const rowDir = isRTL ? "row-reverse" : "row";
 
-  const [rate, setRate] = useState(String(merchant?.pointsRate ?? 1));
-  const [savingRate, setSavingRate] = useState(false);
+  // ── State merchant chargé depuis Supabase ──
+  const [merchant, setMerchant] = useState<any>(null);
   const [notifications, setNotifications] = useState(true);
 
+  // ── State édition ──
   const [isEditing, setIsEditing] = useState(false);
   const [firstName, setFirstName] = useState(user?.firstName ?? "");
   const [lastName, setLastName] = useState(user?.lastName ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
   const [phone, setPhone] = useState(user?.phone ?? "");
-  const [bizName, setBizName] = useState(merchant?.businessName ?? user?.businessName ?? "");
-  const [category, setCategory] = useState(merchant?.category ?? "other");
-  const [prevInfo, setPrevInfo] = useState({
-    firstName: user?.firstName ?? "",
-    lastName: user?.lastName ?? "",
-    email: user?.email ?? "",
-    phone: user?.phone ?? "",
-    bizName: merchant?.businessName ?? user?.businessName ?? "",
-    category: merchant?.category ?? "other",
-  });
+  const [bizName, setBizName] = useState("");
+  const [category, setCategory] = useState("other");
   const [saving, setSaving] = useState(false);
+
+  // ── State taux de points ──
+  const [rate, setRate] = useState("1");
+  const [savingRate, setSavingRate] = useState(false);
+  const [showRateEdit, setShowRateEdit] = useState(false);
+
+  // ── Toast ──
   const [toastMsg, setToastMsg] = useState("");
   const [toastType, setToastType] = useState<"success" | "error">("success");
   const [toastVisible, setToastVisible] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function showToast(message: string, type: "success" | "error" = "success") {
+  function showToast(msg: string, type: "success" | "error" = "success") {
     if (toastTimer.current) clearTimeout(toastTimer.current);
-    setToastMsg(message);
+    setToastMsg(msg);
     setToastType(type);
     setToastVisible(true);
     toastTimer.current = setTimeout(() => setToastVisible(false), 2500);
@@ -83,37 +189,58 @@ export default function MerchantProfileScreen() {
   useFocusEffect(
     useCallback(() => {
       StatusBar.setBarStyle(isDark ? "light-content" : "dark-content", true);
-      if (Platform.OS === "android") {
-        StatusBar.setBackgroundColor(isDark ? "#121212" : "#F9FAFB", true);
-      }
-    }, [isDark])
+      loadMerchant();
+    }, [isDark, user?.id]),
   );
 
+  // ── Charger merchant depuis Supabase ──────────────────────
+  async function loadMerchant() {
+    if (!user?.id) return;
+    const { data } = await supabase
+      .from("merchants")
+      .select("*")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (data) {
+      setMerchant(data);
+      setBizName(data.business_name ?? "");
+      setCategory(data.category ?? "other");
+      setRate(String(data.points_rate ?? 1));
+    }
+  }
+
+  // ── Sauvegarder les infos ─────────────────────────────────
   async function handleSaveInfo() {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (email.trim() && !emailRegex.test(email.trim())) {
       showToast(t("profile.invalidEmail"), "error");
       return;
     }
-    if (!email.trim() && !phone.trim()) {
-      showToast(t("profile.atLeastContact"), "error");
-      return;
-    }
     setSaving(true);
     try {
-      setUser({
-        ...user!,
-        firstName: firstName.trim() || user!.firstName,
-        lastName: lastName.trim() || user!.lastName,
-        email: email.trim() || user!.email,
-        phone: phone.trim() || user!.phone,
+      // Mettre à jour auth metadata
+      await supabase.auth.updateUser({
+        data: {
+          firstName: firstName.trim() || user?.firstName,
+          lastName: lastName.trim() || user?.lastName,
+          first_name: firstName.trim() || user?.firstName,
+          last_name: lastName.trim() || user?.lastName,
+        },
       });
-      if (merchant) {
-        await updateMerchant(merchant.id, {
-          businessName: bizName.trim() || merchant.businessName,
-          category,
-        });
+
+      // Mettre à jour la table merchants
+      if (merchant?.id) {
+        const { error } = await supabase
+          .from("merchants")
+          .update({
+            business_name: bizName.trim() || merchant.business_name,
+            category,
+          })
+          .eq("id", merchant.id);
+        if (error) throw error;
       }
+
+      await loadMerchant();
       setIsEditing(false);
       showToast("✓ " + t("profile.saveSuccess"));
     } catch {
@@ -123,30 +250,32 @@ export default function MerchantProfileScreen() {
     }
   }
 
-  function handleCancel() {
-    setFirstName(prevInfo.firstName);
-    setLastName(prevInfo.lastName);
-    setEmail(prevInfo.email);
-    setPhone(prevInfo.phone);
-    setBizName(prevInfo.bizName);
-    setCategory(prevInfo.category);
-    setIsEditing(false);
-  }
-
+  // ── Sauvegarder le taux de points ────────────────────────
   async function handleSaveRate() {
     const val = parseFloat(rate);
     if (isNaN(val) || val <= 0) {
-      Alert.alert("", "Veuillez entrer un taux valide");
+      showToast(t("common.error"), "error");
       return;
     }
     setSavingRate(true);
     try {
-      if (merchant) await updateMerchant(merchant.id, { pointsRate: val });
+      if (merchant?.id) {
+        const { error } = await supabase
+          .from("merchants")
+          .update({ points_rate: val })
+          .eq("id", merchant.id);
+        if (error) throw error;
+      }
+      setShowRateEdit(false);
+      showToast("✓ " + t("profile.saveSuccess"));
+    } catch {
+      showToast(t("common.error"), "error");
     } finally {
       setSavingRate(false);
     }
   }
 
+  // ── Logout ────────────────────────────────────────────────
   async function handleLogout() {
     Alert.alert(t("profile.logout"), "", [
       { text: t("common.cancel"), style: "cancel" },
@@ -161,363 +290,359 @@ export default function MerchantProfileScreen() {
     ]);
   }
 
-  function handleDeleteAccount() {
+  // ── Supprimer le compte ───────────────────────────────────
+  async function handleDeleteAccount() {
     Alert.alert(
-      "Supprimer votre compte ?",
-      "Cette action est irréversible. Toutes vos données seront définitivement supprimées.",
+      isRTL ? "حذف الحساب؟" : "Supprimer votre compte ?",
+      isRTL
+        ? "هذا الإجراء لا يمكن التراجع عنه."
+        : "Cette action est irréversible.",
       [
-        { text: "Annuler", style: "cancel" },
+        { text: t("common.cancel"), style: "cancel" },
         {
-          text: "Supprimer définitivement",
+          text: isRTL ? "حذف نهائي" : "Supprimer définitivement",
           style: "destructive",
           onPress: async () => {
             await deleteAccount();
             router.replace("/onboarding/language");
           },
         },
-      ]
+      ],
     );
   }
 
-  const infoFields = [
-    { label: t("auth.firstName"), value: firstName, onChange: setFirstName, kbType: "default" as const },
-    { label: t("auth.lastName"), value: lastName, onChange: setLastName, kbType: "default" as const },
-    { label: t("auth.email"), value: email, onChange: setEmail, kbType: "email-address" as const },
-    { label: t("auth.phone"), value: phone, onChange: setPhone, kbType: "phone-pad" as const },
-  ];
-
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <KeyboardAwareScrollView
-        style={[styles.container, { backgroundColor: colors.background }]}
-        contentContainerStyle={{ paddingBottom: 100 }}
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 120 }}
         showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        bottomOffset={Platform.OS === "ios" ? 20 : 60}
       >
-        <View style={[styles.header, { paddingTop: topPad + 12 }]}>
-          <Text style={[styles.title, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
-            {t("profile.title")}
+        {/* ── Hero profil style Telegram ── */}
+        <View
+          style={[
+            styles.heroSection,
+            { paddingTop: topPad + 12, backgroundColor: colors.card, borderBottomColor: colors.border },
+          ]}
+        >
+          <View style={[styles.avatarWrap, { backgroundColor: merchantAccentColor + "20" }]}>
+            <Text style={[styles.avatarText, { color: merchantAccentColor, fontFamily: "Inter_700Bold" }]}>
+              {(user?.firstName?.[0] ?? "").toUpperCase()}
+              {(user?.lastName?.[0] ?? "").toUpperCase()}
+            </Text>
+          </View>
+          <Text style={[styles.heroName, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
+            {user?.firstName} {user?.lastName}
           </Text>
+          <Text style={[styles.heroBiz, { color: merchantAccentColor, fontFamily: "Inter_600SemiBold" }]}>
+            {merchant?.business_name ?? "—"}
+          </Text>
+          <Text style={[styles.heroEmail, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
+            {user?.email ?? user?.phone ?? ""}
+          </Text>
+
+          {/* QR code inline dans le hero */}
+          {merchant?.qr_code && (
+            <View style={styles.qrWrap}>
+              <QRCode value={merchant.qr_code} size={120} color="#1a1a2e" backgroundColor="white" />
+              <Text style={[styles.qrCode, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
+                {merchant.qr_code}
+              </Text>
+            </View>
+          )}
         </View>
 
-        <View style={styles.content}>
-
-          <Card style={styles.section}>
-            <View style={styles.infoHeader}>
-              <Text style={[styles.sectionTitle, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]}>
-                {t("profile.myInfo")}
-              </Text>
-              <TouchableOpacity
-                onPress={() => {
-                  if (isEditing) {
-                    handleCancel();
-                  } else {
-                    setPrevInfo({ firstName, lastName, email, phone, bizName, category });
-                    setIsEditing(true);
-                  }
-                }}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Feather name={isEditing ? "x" : "edit-2"} size={18} color={merchantAccentColor} />
-              </TouchableOpacity>
-            </View>
-
-            {infoFields.map(({ label, value, onChange, kbType }) => (
-              <View key={label} style={styles.infoField}>
-                <Text style={[styles.fieldLabel, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
-                  {label}
-                </Text>
-                <TextInput
-                  value={value}
-                  onChangeText={onChange}
-                  editable={isEditing}
-                  keyboardType={kbType}
-                  inputAccessoryViewID={Platform.OS === "ios" ? KEYBOARD_TOOLBAR_ID : undefined}
-                  style={[
-                    styles.fieldInput,
-                    {
-                      color: colors.foreground,
-                      backgroundColor: isEditing ? colors.card : "transparent",
-                      borderColor: isEditing ? merchantAccentColor : colors.border,
-                      borderWidth: isEditing ? 1.5 : 1,
-                      fontFamily: "Inter_400Regular",
-                    },
-                  ]}
-                  placeholderTextColor={colors.mutedForeground}
+        {/* ── Section : Mes informations ── */}
+        <SettingsSection title={t("profile.myInfo")} isRTL={isRTL}>
+          {!isEditing ? (
+            <>
+              <SettingsRow
+                icon="user"
+                iconColor={merchantAccentColor}
+                label={`${user?.firstName ?? ""} ${user?.lastName ?? ""}`}
+                onPress={() => setIsEditing(true)}
+                isRTL={isRTL}
+              />
+              <Separator />
+              <SettingsRow
+                icon="mail"
+                iconColor="#3498DB"
+                label={user?.email ?? "—"}
+                onPress={() => setIsEditing(true)}
+                isRTL={isRTL}
+              />
+              <Separator />
+              <SettingsRow
+                icon="smartphone"
+                iconColor="#27AE60"
+                label={user?.phone ?? "—"}
+                onPress={() => setIsEditing(true)}
+                isRTL={isRTL}
+              />
+              <Separator />
+              <SettingsRow
+                icon="briefcase"
+                iconColor="#9B59B6"
+                label={merchant?.business_name ?? "—"}
+                value={t(`auth.categories.${merchant?.category ?? "other"}` as any)}
+                onPress={() => setIsEditing(true)}
+                isRTL={isRTL}
+              />
+            </>
+          ) : (
+            <View style={{ padding: 16, gap: 12 }}>
+              <View style={[{ flexDirection: rowDir, gap: 12 }]}>
+                <Input
+                  label={t("auth.firstName")}
+                  value={firstName}
+                  onChangeText={setFirstName}
+                  leftIcon="user"
+                  containerStyle={{ flex: 1 }}
+                />
+                <Input
+                  label={t("auth.lastName")}
+                  value={lastName}
+                  onChangeText={setLastName}
+                  leftIcon="user"
+                  containerStyle={{ flex: 1 }}
                 />
               </View>
-            ))}
-
-            <View style={styles.infoField}>
-              <Text style={[styles.fieldLabel, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
-                {t("auth.businessName")}
-              </Text>
-              <TextInput
+              <Input
+                label={t("auth.email")}
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                leftIcon="mail"
+              />
+              <Input
+                label={t("auth.phone")}
+                value={phone}
+                onChangeText={setPhone}
+                keyboardType="phone-pad"
+                leftIcon="smartphone"
+              />
+              <Input
+                label={t("auth.businessName")}
                 value={bizName}
                 onChangeText={setBizName}
-                editable={isEditing}
-                inputAccessoryViewID={Platform.OS === "ios" ? KEYBOARD_TOOLBAR_ID : undefined}
-                style={[
-                  styles.fieldInput,
-                  {
-                    color: colors.foreground,
-                    backgroundColor: isEditing ? colors.card : "transparent",
-                    borderColor: isEditing ? merchantAccentColor : colors.border,
-                    borderWidth: isEditing ? 1.5 : 1,
-                    fontFamily: "Inter_400Regular",
-                  },
-                ]}
-                placeholderTextColor={colors.mutedForeground}
+                leftIcon="briefcase"
               />
-            </View>
-
-            <View style={styles.infoField}>
-              <Text style={[styles.fieldLabel, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
+              <Text style={[styles.catLabel, { color: colors.mutedForeground, fontFamily: "Inter_500Medium", textAlign }]}>
                 {t("auth.businessCategory")}
               </Text>
-              {isEditing ? (
-                <View style={styles.catGrid}>
-                  {CATEGORY_KEYS.map((key) => (
-                    <TouchableOpacity
-                      key={key}
-                      onPress={() => setCategory(key)}
-                      style={[
-                        styles.catChip,
-                        {
-                          borderColor: category === key ? merchantAccentColor : colors.border,
-                          backgroundColor: category === key ? merchantAccentColor + "15" : colors.background,
-                          borderRadius: 20,
-                        },
-                      ]}
+              <View style={[styles.catGrid, { flexDirection: rowDir }]}>
+                {CATEGORY_KEYS.map((key) => (
+                  <TouchableOpacity
+                    key={key}
+                    onPress={() => setCategory(key)}
+                    style={[
+                      styles.catChip,
+                      {
+                        borderColor: category === key ? merchantAccentColor : colors.border,
+                        backgroundColor: category === key ? merchantAccentColor + "15" : colors.background,
+                        borderWidth: category === key ? 2 : 1,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: category === key ? merchantAccentColor : colors.mutedForeground,
+                        fontFamily: category === key ? "Inter_600SemiBold" : "Inter_400Regular",
+                      }}
                     >
-                      <Text
-                        style={[
-                          styles.catChipText,
-                          {
-                            color: category === key ? merchantAccentColor : colors.mutedForeground,
-                            fontFamily: category === key ? "Inter_600SemiBold" : "Inter_400Regular",
-                          },
-                        ]}
-                      >
-                        {t(`auth.categories.${key}` as any)}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              ) : (
-                <Text style={[styles.fieldReadonly, { color: colors.foreground, fontFamily: "Inter_400Regular" }]}>
-                  {t(`auth.categories.${category}` as any)}
-                </Text>
-              )}
-            </View>
-
-            {isEditing && (
-              <View style={styles.editActions}>
-                <Button title={t("common.cancel")} onPress={handleCancel} variant="outline" size="sm" style={{ flex: 1 }} />
+                      {t(`auth.categories.${key}` as any)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={[{ flexDirection: rowDir, gap: 12, marginTop: 4 }]}>
+                <Button
+                  title={t("common.cancel")}
+                  onPress={() => setIsEditing(false)}
+                  variant="outline"
+                  size="sm"
+                  style={{ flex: 1 }}
+                />
                 <Button
                   title={t("common.save")}
                   onPress={handleSaveInfo}
                   loading={saving}
                   size="sm"
-                  style={{ flex: 1, backgroundColor: merchantAccentColor, borderRadius: 99 }}
+                  style={{ flex: 1, backgroundColor: merchantAccentColor }}
                 />
               </View>
-            )}
-          </Card>
-
-          <Card style={styles.bizCard}>
-            <View style={[styles.bizIcon, { backgroundColor: merchantAccentColor + "18" }]}>
-              <Feather name="briefcase" size={28} color={merchantAccentColor} />
             </View>
-            <Text style={[styles.bizName, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
-              {merchant?.businessName ?? user?.businessName}
-            </Text>
-            <Text style={[styles.bizCat, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
-              {t(`auth.categories.${merchant?.category ?? "other"}` as any)}
-            </Text>
-            <View style={styles.bizStats}>
-              <View style={styles.bizStat}>
-                <Text style={[styles.statVal, { color: "#F9A602", fontFamily: "Inter_700Bold" }]}>
-                  {merchant?.totalCustomers ?? 0}
-                </Text>
-                <Text style={[styles.statLbl, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
-                  {t("merchant.activeCustomers")}
-                </Text>
-              </View>
-              <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
-              <View style={styles.bizStat}>
-                <Text style={[styles.statVal, { color: "#F9A602", fontFamily: "Inter_700Bold" }]}>
-                  {merchant?.pointsThisMonth ?? 0}
-                </Text>
-                <Text style={[styles.statLbl, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
-                  {t("merchant.pointsDistributed")}
-                </Text>
-              </View>
-            </View>
-          </Card>
-
-          {merchant?.qrCode && (
-            <Card style={styles.qrCard}>
-              <Text style={[styles.sectionTitle, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]}>
-                Mon QR Code Marchand
-              </Text>
-              <Text style={[styles.qrSubtitle, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
-                Affichez ce code à votre comptoir pour que vos clients puissent vous identifier.
-              </Text>
-              <View style={styles.qrWrap}>
-                <QRCode value={merchant.qrCode} size={160} color="#1a1a2e" backgroundColor="white" />
-              </View>
-              <Text style={[styles.qrCodeText, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
-                {merchant.qrCode}
-              </Text>
-            </Card>
           )}
+        </SettingsSection>
 
-          <Card>
-            <Text style={[styles.sectionTitle, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]}>
-              {t("profile.pointsRate")}
-            </Text>
-            <View style={styles.rateRow}>
+        {/* ── Section : Commerce ── */}
+        <SettingsSection title={t("profile.businessInfo")} isRTL={isRTL}>
+          <SettingsRow
+            icon="zap"
+            iconColor="#F9A602"
+            label={t("profile.pointsRate")}
+            value={`1 DH = ${merchant?.points_rate ?? 1} pts`}
+            onPress={() => setShowRateEdit(!showRateEdit)}
+            isRTL={isRTL}
+          />
+          {showRateEdit && (
+            <View style={{ padding: 16, gap: 12 }}>
               <Input
+                label={t("profile.pointsRate")}
                 placeholder="1"
                 value={rate}
                 onChangeText={setRate}
                 keyboardType="decimal-pad"
                 leftIcon="zap"
-                containerStyle={{ flex: 1, marginBottom: 0 }}
               />
-              <Text style={[styles.rateLbl, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
-                DH = {rate || "1"} pts
-              </Text>
+              <Button
+                title={t("common.save")}
+                onPress={handleSaveRate}
+                loading={savingRate}
+                size="sm"
+                style={{ backgroundColor: merchantAccentColor }}
+              />
             </View>
-            <Button
-              title={t("common.save")}
-              onPress={handleSaveRate}
-              loading={savingRate}
-              size="sm"
-              style={{ marginTop: 10, alignSelf: "flex-start", backgroundColor: merchantAccentColor, borderRadius: 99 }}
-            />
-          </Card>
+          )}
+          <Separator />
+          <SettingsRow
+            icon="users"
+            iconColor="#3498DB"
+            label={t("merchant.activeCustomers")}
+            value={String(merchant?.total_customers ?? 0)}
+            isRTL={isRTL}
+          />
+          <Separator />
+          <SettingsRow
+            icon="trending-up"
+            iconColor="#27AE60"
+            label={t("merchant.pointsDistributed")}
+            value={String(merchant?.points_this_month ?? 0)}
+            isRTL={isRTL}
+          />
+        </SettingsSection>
 
-          <Card>
-            <View style={styles.notifRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.sectionTitle, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]}>
-                  {t("profile.notifications")}
-                </Text>
-                <Text style={[styles.notifSub, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
-                  Alertes transactions
-                </Text>
-              </View>
+        {/* ── Section : Préférences ── */}
+        <SettingsSection title={isRTL ? "التفضيلات" : "Préférences"} isRTL={isRTL}>
+          {/* Notifications */}
+          <SettingsRow
+            icon="bell"
+            iconColor="#E67E22"
+            label={t("profile.notifications")}
+            isRTL={isRTL}
+            rightElement={
               <Switch
                 value={notifications}
                 onValueChange={setNotifications}
                 trackColor={{ false: colors.border, true: merchantAccentColor + "80" }}
                 thumbColor={notifications ? merchantAccentColor : colors.mutedForeground}
               />
-            </View>
-          </Card>
-
-          <Card>
-            <Text style={[styles.sectionTitle, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]}>
-              {t("profile.language")}
-            </Text>
-            <View style={styles.langRow}>
-              {LANGS.map((l) => (
-                <TouchableOpacity
-                  key={l.code}
-                  onPress={() => setLanguage(l.code)}
-                  style={[
-                    styles.langBtn,
-                    {
-                      borderColor: language === l.code ? merchantAccentColor : colors.border,
-                      backgroundColor: language === l.code ? merchantAccentColor + "15" : colors.background,
-                      borderRadius: colors.radius,
-                      borderWidth: language === l.code ? 2 : 1,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.langLabel,
-                      {
-                        color: language === l.code ? merchantAccentColor : colors.mutedForeground,
-                        fontFamily: language === l.code ? "Inter_600SemiBold" : "Inter_400Regular",
-                      },
-                    ]}
-                  >
-                    {l.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </Card>
-
-          <Card style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]}>
-              Apparence
-            </Text>
-            <View style={styles.themeRow}>
-              <View style={styles.themeIconRow}>
-                <Feather name="sun" size={18} color={!isDark ? merchantAccentColor : colors.mutedForeground} />
-                <Text style={[styles.themeLabel, { color: colors.foreground, fontFamily: "Inter_400Regular" }]}>
-                  {isDark ? "Mode sombre" : "Mode clair"}
-                </Text>
-                <Feather name="moon" size={18} color={isDark ? merchantAccentColor : colors.mutedForeground} />
-              </View>
+            }
+          />
+          <Separator />
+          {/* Mode sombre */}
+          <SettingsRow
+            icon={isDark ? "moon" : "sun"}
+            iconColor={isDark ? "#9B59B6" : "#F9A602"}
+            label={isDark ? (isRTL ? "الوضع الداكن" : "Mode sombre") : (isRTL ? "الوضع الفاتح" : "Mode clair")}
+            isRTL={isRTL}
+            rightElement={
               <Switch
                 value={isDark}
                 onValueChange={(val) => setColorTheme(val ? "dark" : "light")}
                 trackColor={{ false: colors.border, true: merchantAccentColor + "80" }}
                 thumbColor={isDark ? merchantAccentColor : colors.mutedForeground}
               />
-            </View>
-            <View style={styles.accentSection}>
-              <Text style={[styles.accentLabel, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
-                Couleur principale
-              </Text>
-              <View style={styles.swatchRow}>
-                {ACCENT_COLORS.map((swatch) => {
-                  const isSelected = merchantAccentColor === swatch.value;
-                  return (
-                    <TouchableOpacity
-                      key={swatch.key}
-                      onPress={() => setMerchantAccentColor(swatch.value)}
-                      style={[
-                        styles.swatch,
-                        {
-                          backgroundColor: swatch.value,
-                          borderWidth: isSelected ? 3 : 2,
-                          borderColor: isSelected ? swatch.value : "transparent",
-                          shadowColor: isSelected ? swatch.value : "transparent",
-                          shadowOffset: { width: 0, height: 2 },
-                          shadowOpacity: isSelected ? 0.5 : 0,
-                          shadowRadius: 4,
-                          elevation: isSelected ? 4 : 0,
-                          transform: [{ scale: isSelected ? 1.15 : 1 }],
-                        },
-                      ]}
-                    >
-                      {isSelected && <Feather name="check" size={14} color="white" />}
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-          </Card>
+            }
+          />
+        </SettingsSection>
 
-          <Button title={t("profile.logout")} onPress={handleLogout} variant="danger" size="lg" />
+        {/* ── Section : Couleur principale ── */}
+        <SettingsSection title={isRTL ? "اللون الرئيسي" : "Couleur principale"} isRTL={isRTL}>
+          <View style={[styles.swatchRow, { flexDirection: rowDir }]}>
+            {ACCENT_COLORS.map((swatch) => {
+              const isSelected = merchantAccentColor === swatch.value;
+              return (
+                <TouchableOpacity
+                  key={swatch.key}
+                  onPress={() => setMerchantAccentColor(swatch.value)}
+                  style={[
+                    styles.swatch,
+                    {
+                      backgroundColor: swatch.value,
+                      borderWidth: isSelected ? 3 : 2,
+                      borderColor: isSelected ? "#fff" : "transparent",
+                      transform: [{ scale: isSelected ? 1.2 : 1 }],
+                      shadowColor: isSelected ? swatch.value : "transparent",
+                      shadowOffset: { width: 0, height: 3 },
+                      shadowOpacity: 0.5,
+                      shadowRadius: 6,
+                      elevation: isSelected ? 6 : 0,
+                    },
+                  ]}
+                >
+                  {isSelected && <Feather name="check" size={14} color="white" />}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </SettingsSection>
 
-          <TouchableOpacity onPress={handleDeleteAccount} style={styles.deleteAccountBtn}>
-            <Text style={styles.deleteAccountText}>Supprimer mon compte</Text>
-          </TouchableOpacity>
-        </View>
-      </KeyboardAwareScrollView>
+        {/* ── Section : Langue ── */}
+        <SettingsSection title={t("profile.language")} isRTL={isRTL}>
+          {LANGS.map((l, i) => (
+            <React.Fragment key={l.code}>
+              {i > 0 && <Separator />}
+              <SettingsRow
+                icon="globe"
+                iconColor={language === l.code ? merchantAccentColor : colors.mutedForeground}
+                label={`${l.flag}  ${l.label}`}
+                isRTL={isRTL}
+                onPress={() => setLanguage(l.code)}
+                rightElement={
+                  language === l.code ? (
+                    <Feather name="check" size={18} color={merchantAccentColor} />
+                  ) : undefined
+                }
+              />
+            </React.Fragment>
+          ))}
+        </SettingsSection>
 
+        {/* ── Section : Compte ── */}
+        <SettingsSection title={isRTL ? "الحساب" : "Compte"} isRTL={isRTL}>
+          <SettingsRow
+            icon="log-out"
+            iconColor="#E67E22"
+            label={t("profile.logout")}
+            onPress={handleLogout}
+            isRTL={isRTL}
+          />
+          <Separator />
+          <SettingsRow
+            icon="trash-2"
+            iconColor="#E74C3C"
+            label={isRTL ? "حذف الحساب" : "Supprimer mon compte"}
+            onPress={handleDeleteAccount}
+            destructive
+            isRTL={isRTL}
+          />
+        </SettingsSection>
+      </ScrollView>
+
+      {/* ── Toast ── */}
       {toastVisible && (
-        <View style={[styles.toast, { backgroundColor: toastType === "success" ? "#27AE60" : "#E74C3C" }]}>
-          <Text style={styles.toastText}>{toastMsg}</Text>
+        <View
+          style={[
+            styles.toast,
+            { backgroundColor: toastType === "success" ? "#27AE60" : "#E74C3C" },
+          ]}
+        >
+          <Text style={[styles.toastText, { fontFamily: "Inter_600SemiBold" }]}>
+            {toastMsg}
+          </Text>
         </View>
       )}
     </View>
@@ -525,50 +650,98 @@ export default function MerchantProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: { paddingHorizontal: 20, paddingBottom: 12 },
-  title: { fontSize: 24 },
-  content: { padding: 16, gap: 16 },
-  section: {},
-  sectionTitle: { fontSize: 15, marginBottom: 12 },
-  bizCard: { alignItems: "center", gap: 6 },
-  bizIcon: { width: 72, height: 72, borderRadius: 36, alignItems: "center", justifyContent: "center", marginBottom: 4 },
-  bizName: { fontSize: 20 },
-  bizCat: { fontSize: 14 },
-  bizStats: { flexDirection: "row", alignItems: "center", gap: 24, marginTop: 8 },
-  bizStat: { alignItems: "center", gap: 2 },
-  statVal: { fontSize: 22 },
-  statLbl: { fontSize: 12 },
-  statDivider: { width: 1, height: 36 },
-  qrCard: { alignItems: "center", gap: 10 },
-  qrSubtitle: { fontSize: 13, textAlign: "center", lineHeight: 18 },
-  qrWrap: { padding: 16, backgroundColor: "white", borderRadius: 12, marginTop: 4 },
-  qrCodeText: { fontSize: 12, letterSpacing: 1, marginTop: 2 },
-  rateRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  rateLbl: { fontSize: 14, flex: 1 },
-  notifRow: { flexDirection: "row", alignItems: "center" },
-  notifSub: { fontSize: 13, marginTop: 2 },
+  // Hero
+  heroSection: {
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingBottom: 24,
+    borderBottomWidth: 1,
+    gap: 4,
+  },
+  avatarWrap: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
+  avatarText: { fontSize: 28 },
+  heroName: { fontSize: 20 },
+  heroBiz: { fontSize: 14 },
+  heroEmail: { fontSize: 13, marginTop: 2 },
+  qrWrap: { alignItems: "center", marginTop: 16, gap: 8 },
+  qrCode: { fontSize: 11, letterSpacing: 1 },
+
+  // Settings rows
+  sectionWrap: { marginTop: 24, paddingHorizontal: 16 },
+  sectionHeader: {
+    fontSize: 12,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: 6,
+    paddingHorizontal: 4,
+  },
+  sectionCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  settingsRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    alignItems: "center",
+    gap: 14,
+  },
+  rowIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rowLabel: { fontSize: 15 },
+  rowValue: { fontSize: 13 },
+  separator: { height: 1, marginLeft: 64 },
+
+  // Couleurs
+  swatchRow: {
+    padding: 16,
+    gap: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  swatch: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  // Langue
   langRow: { flexDirection: "row", gap: 8 },
-  langBtn: { flex: 1, padding: 10, alignItems: "center", gap: 4 },
-  langLabel: { fontSize: 12, textAlign: "center" },
-  infoHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
-  infoField: { marginBottom: 12 },
-  fieldLabel: { fontSize: 12, marginBottom: 4 },
-  fieldInput: { paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, borderRadius: 8 },
-  themeRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 },
-  themeIconRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  themeLabel: { fontSize: 14 },
-  accentSection: { gap: 10 },
-  accentLabel: { fontSize: 13 },
-  swatchRow: { flexDirection: "row", gap: 14, alignItems: "center" },
-  swatch: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
-  deleteAccountBtn: { alignItems: "center", paddingVertical: 16, paddingHorizontal: 20 },
-  deleteAccountText: { color: "#E74C3C", fontSize: 14, textAlign: "center" },
-  fieldReadonly: { fontSize: 14, paddingVertical: 10 },
-  catGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 },
-  catChip: { paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1.5 },
-  catChipText: { fontSize: 13 },
-  editActions: { flexDirection: "row", gap: 12, marginTop: 8 },
-  toast: { position: "absolute", bottom: 90, left: 24, right: 24, padding: 16, borderRadius: 12, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 8, zIndex: 1000 },
-  toastText: { color: "white", fontFamily: "Inter_600SemiBold", fontSize: 14, textAlign: "center" },
+  langBtn: { flex: 1, padding: 10, alignItems: "center" },
+
+  // Édition
+  catLabel: { fontSize: 13, marginBottom: 4 },
+  catGrid: { flexWrap: "wrap", gap: 8 },
+  catChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+
+  // Toast
+  toast: {
+    position: "absolute",
+    bottom: 90,
+    left: 24,
+    right: 24,
+    padding: 16,
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
+    zIndex: 1000,
+  },
+  toastText: { color: "white", fontSize: 14, textAlign: "center" },
 });

@@ -21,7 +21,13 @@ import { sendPhoneOTP, verifyPhoneOTP } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { nanoid } from "nanoid/non-secure";
 
-const CATEGORIES = ["restaurant", "clothing", "hairSalon", "hotel", "other"] as const;
+const CATEGORIES = [
+  "restaurant",
+  "clothing",
+  "hairSalon",
+  "hotel",
+  "other",
+] as const;
 
 export default function RegisterScreen() {
   const colors = useColors();
@@ -32,7 +38,9 @@ export default function RegisterScreen() {
 
   const isMerchant = role === "merchant";
   const accent = isMerchant ? colors.blue : colors.coral;
-  const gradientColors: [string, string] = isMerchant ? ["#2C3E8C", "#00B4D8"] : ["#FF6B6B", "#FF8E53"];
+  const gradientColors: [string, string] = isMerchant
+    ? ["#2C3E8C", "#00B4D8"]
+    : ["#FF6B6B", "#FF8E53"];
 
   const [mode, setMode] = useState<"email" | "phone">("email");
   const [phoneStep, setPhoneStep] = useState<"form" | "otp">("form");
@@ -67,16 +75,33 @@ export default function RegisterScreen() {
       if (!phone.trim()) errs.phone = t("auth.atLeastOne");
     }
     if (isMerchant && !businessName.trim()) errs.businessName = "Required";
-    if (Object.keys(errs).length) { setErrors(errs); return; }
+    if (Object.keys(errs).length) {
+      setErrors(errs);
+      return;
+    }
 
     setLoading(true);
     try {
       if (mode === "email") {
-        const { data: authData, error: authError } = await supabase.auth.signUp({
-          email: email.trim(),
-          password,
-          options: { data: { first_name: firstName, last_name: lastName } },
-        });
+        // ── 1. Créer le compte auth avec role dans les metadata ──
+        const { data: authData, error: authError } = await supabase.auth.signUp(
+          {
+            email: email.trim(),
+            password,
+            options: {
+              data: {
+                role, // ✅ sauvegarde le role
+                first_name: firstName,
+                last_name: lastName,
+                firstName, // ✅ pour buildUserFromSession
+                lastName,
+                businessName: isMerchant ? businessName : undefined,
+                businessCategory: isMerchant ? category : undefined,
+                pointsRate: isMerchant ? 1 : undefined,
+              },
+            },
+          },
+        );
         if (authError) throw authError;
 
         const userId = authData.user!.id;
@@ -84,44 +109,71 @@ export default function RegisterScreen() {
           ? `FID-MERCH-${nanoid(8).toUpperCase()}`
           : `FID-CUST-${nanoid(8).toUpperCase()}`;
 
+        // ── 2. Insérer dans la bonne table selon le role ──
         if (isMerchant) {
-          const { error: insertError } = await supabase.from("merchants").insert({
-            id: nanoid(),
-            user_id: userId,
-            business_name: businessName,
-            category,
-            logo_url: null,
-            points_rate: 1,
-            total_customers: 0,
-            points_this_month: 0,
-            rewards_redeemed: 0,
-            qr_code: qrCode,
-          });
-          if (insertError) throw insertError;
+          // Vérifier qu'il n'existe pas déjà (évite les doublons)
+          const { data: existing } = await supabase
+            .from("merchants")
+            .select("id")
+            .eq("user_id", userId)
+            .maybeSingle();
+
+          if (!existing) {
+            const { error: insertError } = await supabase
+              .from("merchants")
+              .insert({
+                id: nanoid(),
+                user_id: userId,
+                business_name: businessName.trim(),
+                category,
+                logo_url: null,
+                points_rate: 1,
+                total_customers: 0,
+                points_this_month: 0,
+                rewards_redeemed: 0,
+                qr_code: qrCode,
+              });
+            if (insertError) throw insertError;
+          }
         } else {
-          const { error: insertError } = await supabase.from("customers").insert({
-            id: nanoid(),
-            user_id: userId,
-            first_name: firstName,
-            last_name: lastName,
-            email: email.trim(),
-            phone: phone || null,
-            tier: "bronze",
-            qr_code: qrCode,
-          });
-          if (insertError) throw insertError;
+          // Vérifier qu'il n'existe pas déjà
+          const { data: existing } = await supabase
+            .from("customers")
+            .select("id")
+            .eq("user_id", userId)
+            .maybeSingle();
+
+          if (!existing) {
+            const { error: insertError } = await supabase
+              .from("customers")
+              .insert({
+                id: nanoid(),
+                user_id: userId,
+                first_name: firstName.trim(),
+                last_name: lastName.trim(),
+                email: email.trim(),
+                phone: phone || null,
+                tier: "bronze",
+                qr_code: qrCode,
+              });
+            if (insertError) throw insertError;
+          }
         }
 
         await completeOnboarding();
         router.replace(dest as any);
       } else {
+        // ── Mode téléphone → OTP ──
         await sendPhoneOTP(phone.trim());
         setPhoneStep("otp");
         setErrors({});
       }
     } catch (e: any) {
       const msg: string = e?.message ?? "";
-      if (msg.includes("already registered") || msg.includes("already been registered")) {
+      if (
+        msg.includes("already registered") ||
+        msg.includes("already been registered")
+      ) {
         Alert.alert("Erreur", "Cet email est déjà utilisé.");
       } else {
         Alert.alert("Erreur", msg || "Inscription échouée.");
@@ -132,7 +184,10 @@ export default function RegisterScreen() {
   }
 
   async function handleVerifyOtp() {
-    if (!otpCode.trim()) { setErrors({ otp: "Required" }); return; }
+    if (!otpCode.trim()) {
+      setErrors({ otp: "Required" });
+      return;
+    }
 
     setLoading(true);
     try {
@@ -140,7 +195,12 @@ export default function RegisterScreen() {
         ? { firstName, lastName, businessName, category, pointsRate: 1 }
         : { firstName, lastName, phone: phone || undefined };
 
-      await verifyPhoneOTP(phone.trim(), otpCode.trim(), userData, role ?? "customer");
+      await verifyPhoneOTP(
+        phone.trim(),
+        otpCode.trim(),
+        userData,
+        role ?? "customer",
+      );
       await completeOnboarding();
       router.replace(dest as any);
     } catch (e: any) {
@@ -154,22 +214,42 @@ export default function RegisterScreen() {
     return (
       <View style={[styles.container, { backgroundColor: "#fff" }]}>
         <KeyboardAwareScrollView
-          contentContainerStyle={[styles.scroll, { paddingTop: Platform.OS === "web" ? 80 : 60 }]}
+          contentContainerStyle={[
+            styles.scroll,
+            { paddingTop: Platform.OS === "web" ? 80 : 60 },
+          ]}
           keyboardShouldPersistTaps="handled"
           onScrollBeginDrag={Keyboard.dismiss}
           bottomOffset={20}
           showsVerticalScrollIndicator={false}
         >
-          <TouchableOpacity onPress={() => setPhoneStep("form")} style={styles.backBtn}>
+          <TouchableOpacity
+            onPress={() => setPhoneStep("form")}
+            style={styles.backBtn}
+          >
             <Feather name="arrow-left" size={22} color="#0f0f0f" />
           </TouchableOpacity>
 
           <View style={styles.header}>
             <FideliioLogo size={52} />
-            <Text style={[styles.title, { color: "#0f0f0f", fontFamily: "Inter_700Bold" }]}>
+            <Text
+              style={[
+                styles.title,
+                { color: "#0f0f0f", fontFamily: "Inter_700Bold" },
+              ]}
+            >
               Vérification
             </Text>
-            <Text style={[{ color: "#6B7280", fontSize: 14, textAlign: "center", fontFamily: "Inter_400Regular" }]}>
+            <Text
+              style={[
+                {
+                  color: "#6B7280",
+                  fontSize: 14,
+                  textAlign: "center",
+                  fontFamily: "Inter_400Regular",
+                },
+              ]}
+            >
               Code envoyé à {mode === "email" ? email : phone}
             </Text>
           </View>
@@ -184,7 +264,12 @@ export default function RegisterScreen() {
             error={errors.otp}
           />
 
-          <TouchableOpacity onPress={handleVerifyOtp} activeOpacity={0.88} disabled={loading} style={{ marginTop: 8 }}>
+          <TouchableOpacity
+            onPress={handleVerifyOtp}
+            activeOpacity={0.88}
+            disabled={loading}
+            style={{ marginTop: 8 }}
+          >
             <LinearGradient
               colors={gradientColors}
               start={{ x: 0, y: 0 }}
@@ -202,11 +287,21 @@ export default function RegisterScreen() {
               try {
                 await sendPhoneOTP(phone.trim());
                 Alert.alert("OK", "Code renvoyé !");
-              } catch { Alert.alert("Erreur", "Impossible de renvoyer le code."); }
+              } catch {
+                Alert.alert("Erreur", "Impossible de renvoyer le code.");
+              }
             }}
             style={styles.resendBtn}
           >
-            <Text style={[{ color: accent, fontFamily: "Inter_600SemiBold", fontSize: 14 }]}>
+            <Text
+              style={[
+                {
+                  color: accent,
+                  fontFamily: "Inter_600SemiBold",
+                  fontSize: 14,
+                },
+              ]}
+            >
               Renvoyer le code
             </Text>
           </TouchableOpacity>
@@ -218,7 +313,10 @@ export default function RegisterScreen() {
   return (
     <View style={[styles.container, { backgroundColor: "#fff" }]}>
       <KeyboardAwareScrollView
-        contentContainerStyle={[styles.scroll, { paddingTop: Platform.OS === "web" ? 80 : 60 }]}
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingTop: Platform.OS === "web" ? 80 : 60 },
+        ]}
         keyboardShouldPersistTaps="handled"
         onScrollBeginDrag={Keyboard.dismiss}
         bottomOffset={20}
@@ -230,7 +328,12 @@ export default function RegisterScreen() {
 
         <View style={styles.header}>
           <FideliioLogo size={52} />
-          <Text style={[styles.title, { color: "#0f0f0f", fontFamily: "Inter_700Bold" }]}>
+          <Text
+            style={[
+              styles.title,
+              { color: "#0f0f0f", fontFamily: "Inter_700Bold" },
+            ]}
+          >
             {isMerchant ? t("auth.registerMerchant") : t("auth.register")}
           </Text>
         </View>
@@ -260,13 +363,28 @@ export default function RegisterScreen() {
           {(["email", "phone"] as const).map((m) => (
             <TouchableOpacity
               key={m}
-              onPress={() => { setMode(m); setErrors({}); }}
-              style={[styles.tab, { borderBottomColor: mode === m ? accent : "transparent", borderBottomWidth: 2 }]}
+              onPress={() => {
+                setMode(m);
+                setErrors({});
+              }}
+              style={[
+                styles.tab,
+                {
+                  borderBottomColor: mode === m ? accent : "transparent",
+                  borderBottomWidth: 2,
+                },
+              ]}
             >
-              <Text style={[styles.tabText, {
-                color: mode === m ? accent : "#6B7280",
-                fontFamily: mode === m ? "Inter_600SemiBold" : "Inter_400Regular",
-              }]}>
+              <Text
+                style={[
+                  styles.tabText,
+                  {
+                    color: mode === m ? accent : "#6B7280",
+                    fontFamily:
+                      mode === m ? "Inter_600SemiBold" : "Inter_400Regular",
+                  },
+                ]}
+              >
                 {m === "email" ? t("auth.email") : t("auth.phone")}
               </Text>
             </TouchableOpacity>
@@ -333,7 +451,12 @@ export default function RegisterScreen() {
               leftIcon="briefcase"
               error={errors.businessName}
             />
-            <Text style={[styles.catLabel, { color: "#6B7280", fontFamily: "Inter_500Medium" }]}>
+            <Text
+              style={[
+                styles.catLabel,
+                { color: "#6B7280", fontFamily: "Inter_500Medium" },
+              ]}
+            >
               {t("auth.businessCategory")}
             </Text>
             <View style={styles.catGrid}>
@@ -346,15 +469,28 @@ export default function RegisterScreen() {
                     {
                       borderRadius: colors.radius,
                       borderColor: category === cat ? accent : "#E5E7EB",
-                      backgroundColor: category === cat ? (isMerchant ? colors.tealLight : colors.coralLight) : "#fff",
+                      backgroundColor:
+                        category === cat
+                          ? isMerchant
+                            ? colors.tealLight
+                            : colors.coralLight
+                          : "#fff",
                       borderWidth: category === cat ? 2 : 1,
                     },
                   ]}
                 >
-                  <Text style={[styles.catText, {
-                    color: category === cat ? accent : "#6B7280",
-                    fontFamily: category === cat ? "Inter_600SemiBold" : "Inter_400Regular",
-                  }]}>
+                  <Text
+                    style={[
+                      styles.catText,
+                      {
+                        color: category === cat ? accent : "#6B7280",
+                        fontFamily:
+                          category === cat
+                            ? "Inter_600SemiBold"
+                            : "Inter_400Regular",
+                      },
+                    ]}
+                  >
                     {t(`auth.categories.${cat}` as any)}
                   </Text>
                 </TouchableOpacity>
@@ -363,7 +499,12 @@ export default function RegisterScreen() {
           </>
         )}
 
-        <TouchableOpacity onPress={handleRegister} activeOpacity={0.88} disabled={loading} style={{ marginTop: 8 }}>
+        <TouchableOpacity
+          onPress={handleRegister}
+          activeOpacity={0.88}
+          disabled={loading}
+          style={{ marginTop: 8 }}
+        >
           <LinearGradient
             colors={gradientColors}
             start={{ x: 0, y: 0 }}
@@ -382,21 +523,36 @@ export default function RegisterScreen() {
 
         <View style={styles.dividerRow}>
           <View style={[styles.divider, { backgroundColor: "#E5E7EB" }]} />
-          <Text style={[styles.dividerText, { color: "#6B7280", fontFamily: "Inter_400Regular" }]}>
+          <Text
+            style={[
+              styles.dividerText,
+              { color: "#6B7280", fontFamily: "Inter_400Regular" },
+            ]}
+          >
             {t("common.or")}
           </Text>
           <View style={[styles.divider, { backgroundColor: "#E5E7EB" }]} />
         </View>
 
-        <TouchableOpacity style={[styles.googleBtn, { borderRadius: colors.radius }]}>
+        <TouchableOpacity
+          style={[styles.googleBtn, { borderRadius: colors.radius }]}
+        >
           <Text style={styles.googleIcon}>G</Text>
           <Text style={[styles.googleText, { fontFamily: "Inter_500Medium" }]}>
             {t("auth.google")}
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => router.back()} style={styles.loginLink}>
-          <Text style={[styles.loginText, { color: "#6B7280", fontFamily: "Inter_400Regular" }]}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.loginLink}
+        >
+          <Text
+            style={[
+              styles.loginText,
+              { color: "#6B7280", fontFamily: "Inter_400Regular" },
+            ]}
+          >
             {t("auth.haveAccount")}{" "}
             <Text style={[{ color: accent, fontFamily: "Inter_600SemiBold" }]}>
               {t("auth.signIn")}
@@ -424,7 +580,12 @@ const styles = StyleSheet.create({
   catText: { fontSize: 13 },
   ctaBtn: { paddingVertical: 16, alignItems: "center" },
   ctaText: { color: "#fff", fontSize: 16 },
-  dividerRow: { flexDirection: "row", alignItems: "center", marginVertical: 20, gap: 12 },
+  dividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 20,
+    gap: 12,
+  },
   divider: { flex: 1, height: 1 },
   dividerText: { fontSize: 14 },
   googleBtn: {

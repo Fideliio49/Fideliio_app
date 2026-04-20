@@ -1,10 +1,16 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+} from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { I18nManager } from "react-native";
 import { Session } from "@supabase/supabase-js";
 import i18n, { applyRTL } from "@/i18n";
 import { supabase } from "@/lib/supabase";
 import * as AuthLib from "@/lib/auth";
+import { registerPushToken } from "@/lib/notifications";
 
 export type Language = "fr" | "ar" | "en";
 export type UserRole = "customer" | "merchant";
@@ -64,21 +70,29 @@ const STORAGE_KEYS = {
 const DEFAULT_ACCENT = "#C85A17";
 const DEFAULT_MERCHANT_ACCENT = "#2D9CDB";
 
-function buildUserFromSession(session: Session, fallbackLanguage: Language): User {
+// ✅ Lit le role depuis user_metadata (support snake_case + camelCase)
+function buildUserFromSession(
+  session: Session,
+  fallbackLanguage: Language,
+): User {
   const meta = session.user.user_metadata ?? {};
+  const firstName = meta.firstName ?? meta.first_name ?? "";
+  const lastName = meta.lastName ?? meta.last_name ?? "";
+  const role = (meta.role ?? "customer") as UserRole;
   return {
     id: session.user.id,
-    role: (meta.role ?? "customer") as UserRole,
-    firstName: meta.firstName ?? "",
-    lastName: meta.lastName ?? "",
+    role,
+    firstName,
+    lastName,
     email: session.user.email,
     phone: session.user.phone,
     language: (meta.language ?? fallbackLanguage) as Language,
-    businessName: meta.businessName ?? undefined,
-    businessCategory: meta.businessCategory ?? undefined,
-    pointsRate: meta.pointsRate ?? undefined,
-    totalPoints: meta.totalPoints ?? undefined,
-    logoUrl: meta.logoUrl ?? undefined,
+    businessName: meta.businessName ?? meta.business_name ?? undefined,
+    businessCategory:
+      meta.businessCategory ?? meta.business_category ?? undefined,
+    pointsRate: meta.pointsRate ?? meta.points_rate ?? undefined,
+    totalPoints: meta.totalPoints ?? meta.total_points ?? undefined,
+    logoUrl: meta.logoUrl ?? meta.logo_url ?? undefined,
   };
 }
 
@@ -89,7 +103,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [colorTheme, setColorThemeState] = useState<ColorTheme>("light");
   const [accentColor, setAccentColorState] = useState(DEFAULT_ACCENT);
-  const [merchantAccentColor, setMerchantAccentColorState] = useState(DEFAULT_MERCHANT_ACCENT);
+  const [merchantAccentColor, setMerchantAccentColorState] = useState(
+    DEFAULT_MERCHANT_ACCENT,
+  );
 
   const isRTL = language === "ar";
 
@@ -97,15 +113,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
     loadSettings().then((resolvedLang) => {
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (session) {
-          setUserState(buildUserFromSession(session, resolvedLang));
+          const builtUser = buildUserFromSession(session, resolvedLang);
+          setUserState(builtUser);
+          // ✅ Session active = onboardé automatiquement
+          setIsOnboarded(true);
+          AsyncStorage.setItem(STORAGE_KEYS.ONBOARDED, "true");
+          // ✅ Enregistrer le token push
+          registerPushToken(builtUser.id, builtUser.role).catch(() => {});
         }
         setIsLoading(false);
       });
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
-        setUserState((prev) => buildUserFromSession(session, prev ? prev.language : "fr"));
+        setUserState((prev) =>
+          buildUserFromSession(session, prev ? prev.language : "fr"),
+        );
+        // ✅ Toujours onboardé quand session détectée
+        setIsOnboarded(true);
+        AsyncStorage.setItem(STORAGE_KEYS.ONBOARDED, "true");
       } else {
         setUserState(null);
       }
@@ -116,14 +145,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   async function loadSettings(): Promise<Language> {
     try {
-      const [storedLang, storedOnboarded, storedTheme, storedAccent, storedMerchantAccent] =
-        await Promise.all([
-          AsyncStorage.getItem(STORAGE_KEYS.LANGUAGE),
-          AsyncStorage.getItem(STORAGE_KEYS.ONBOARDED),
-          AsyncStorage.getItem(STORAGE_KEYS.CUSTOMER_THEME),
-          AsyncStorage.getItem(STORAGE_KEYS.ACCENT_COLOR),
-          AsyncStorage.getItem(STORAGE_KEYS.MERCHANT_ACCENT_COLOR),
-        ]);
+      const [
+        storedLang,
+        storedOnboarded,
+        storedTheme,
+        storedAccent,
+        storedMerchantAccent,
+      ] = await Promise.all([
+        AsyncStorage.getItem(STORAGE_KEYS.LANGUAGE),
+        AsyncStorage.getItem(STORAGE_KEYS.ONBOARDED),
+        AsyncStorage.getItem(STORAGE_KEYS.CUSTOMER_THEME),
+        AsyncStorage.getItem(STORAGE_KEYS.ACCENT_COLOR),
+        AsyncStorage.getItem(STORAGE_KEYS.MERCHANT_ACCENT_COLOR),
+      ]);
 
       let resolvedLang: Language = "fr";
       if (storedLang) {
@@ -135,7 +169,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (storedOnboarded === "true") setIsOnboarded(true);
       if (storedTheme) setColorThemeState(storedTheme as ColorTheme);
       if (storedAccent) setAccentColorState(storedAccent);
-      if (storedMerchantAccent) setMerchantAccentColorState(storedMerchantAccent);
+      if (storedMerchantAccent)
+        setMerchantAccentColorState(storedMerchantAccent);
 
       return resolvedLang;
     } catch (e) {
@@ -158,6 +193,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   async function logout() {
     await AuthLib.logout();
     setUserState(null);
+    // ✅ isOnboarded reste true → pas de re-onboarding après logout
   }
 
   async function deleteAccount() {
@@ -169,7 +205,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }
     setUserState(null);
-    setIsOnboarded(false);
+    setIsOnboarded(false); // Reset complet seulement si suppression compte
     setColorThemeState("light");
     setAccentColorState(DEFAULT_ACCENT);
     setMerchantAccentColorState(DEFAULT_MERCHANT_ACCENT);
