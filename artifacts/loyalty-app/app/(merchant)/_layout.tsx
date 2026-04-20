@@ -1,41 +1,11 @@
 import React from "react";
 import { Tabs } from "expo-router";
 import { BlurView } from "expo-blur";
-import { isLiquidGlassAvailable } from "expo-glass-effect";
-import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import { Feather } from "@expo/vector-icons";
 import { Platform, StyleSheet, View, useColorScheme } from "react-native";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { useTranslation } from "react-i18next";
-
-function NativeTabLayout() {
-  const { t } = useTranslation();
-  return (
-    <NativeTabs>
-      <NativeTabs.Trigger name="home">
-        <Icon sf={{ default: "chart.bar", selected: "chart.bar.fill" }} />
-        <Label>{t("merchant.home")}</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="customers">
-        <Icon sf={{ default: "person.2", selected: "person.2.fill" }} />
-        <Label>{t("merchant.customers")}</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="scan">
-        <Icon sf={{ default: "qrcode", selected: "qrcode" }} />
-        <Label>{t("merchant.scan")}</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="rewards">
-        <Icon sf={{ default: "gift", selected: "gift.fill" }} />
-        <Label>{t("merchant.rewards")}</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="profile">
-        <Icon sf={{ default: "person", selected: "person.fill" }} />
-        <Label>{t("merchant.profile")}</Label>
-      </NativeTabs.Trigger>
-    </NativeTabs>
-  );
-}
 
 function ClassicTabLayout() {
   const colors = useColors();
@@ -108,6 +78,5 @@ function ClassicTabLayout() {
 }
 
 export default function MerchantTabLayout() {
-  if (isLiquidGlassAvailable()) return <NativeTabLayout />;
   return <ClassicTabLayout />;
 }
