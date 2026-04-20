@@ -6,13 +6,16 @@ import type { Transaction } from "@/context/DataContext";
 interface TransactionRowProps {
   transaction: Transaction;
   showCustomer?: boolean;
+  isRTL?: boolean;
 }
 
 export function TransactionRow({
   transaction,
   showCustomer = false,
+  isRTL = false,
 }: TransactionRowProps) {
   const colors = useColors();
+
   const date = new Date(transaction.createdAt);
   const dateStr = `${date.getDate().toString().padStart(2, "0")}/${(
     date.getMonth() + 1
@@ -20,14 +23,39 @@ export function TransactionRow({
     .toString()
     .padStart(2, "0")}`;
 
+  const pts = transaction.pointsEarned;
+  const isNegative = pts < 0;
+  const isZero = pts === 0;
+
+  // ✅ Affichage correct : +500, -100, 0
+  const ptsLabel = isZero ? "0" : isNegative ? `${pts}` : `+${pts}`;
+  const ptsColor = isNegative
+    ? "#E74C3C"
+    : isZero
+      ? colors.mutedForeground
+      : "#F9A602";
+  const dotColor = isNegative ? "#E74C3C" : "#F9A602";
+
+  const rowDir = isRTL ? "row-reverse" : "row";
+  const textAlign = isRTL ? "right" : "left";
+
   return (
-    <View style={[styles.row, { borderBottomColor: colors.border }]}>
-      <View style={styles.dot} />
+    <View
+      style={[
+        styles.row,
+        { borderBottomColor: colors.border, flexDirection: rowDir },
+      ]}
+    >
+      <View style={[styles.dot, { backgroundColor: dotColor }]} />
       <View style={styles.info}>
         <Text
           style={[
             styles.name,
-            { color: colors.foreground, fontFamily: "Inter_600SemiBold" },
+            {
+              color: colors.foreground,
+              fontFamily: "Inter_600SemiBold",
+              textAlign,
+            },
           ]}
         >
           {showCustomer
@@ -37,16 +65,23 @@ export function TransactionRow({
         <Text
           style={[
             styles.date,
-            { color: colors.mutedForeground, fontFamily: "Inter_400Regular" },
+            {
+              color: colors.mutedForeground,
+              fontFamily: "Inter_400Regular",
+              textAlign,
+            },
           ]}
         >
           {dateStr} · {transaction.amount} DH
         </Text>
       </View>
       <Text
-        style={[styles.points, { color: "#F9A602", fontFamily: "Inter_700Bold" }]}
+        style={[
+          styles.points,
+          { color: ptsColor, fontFamily: "Inter_700Bold" },
+        ]}
       >
-        +{transaction.pointsEarned}
+        {ptsLabel}
       </Text>
     </View>
   );
@@ -54,7 +89,6 @@ export function TransactionRow({
 
 const styles = StyleSheet.create({
   row: {
-    flexDirection: "row",
     alignItems: "center",
     paddingVertical: 12,
     gap: 12,
@@ -64,20 +98,10 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: "#F9A602",
     flexShrink: 0,
   },
-  info: {
-    flex: 1,
-    gap: 2,
-  },
-  name: {
-    fontSize: 14,
-  },
-  date: {
-    fontSize: 12,
-  },
-  points: {
-    fontSize: 15,
-  },
+  info: { flex: 1, gap: 2 },
+  name: { fontSize: 14 },
+  date: { fontSize: 12 },
+  points: { fontSize: 15 },
 });

@@ -4,13 +4,16 @@ import { Platform } from "react-native";
 import { supabase } from "@/lib/supabase";
 
 // ── Config affichage des notifications reçues ─────────────
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+// expo-notifications has no web support — guard all calls
+if (Platform.OS !== "web") {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+    }),
+  });
+}
 
 // ── Enregistrer le token push du user ─────────────────────
 export async function registerPushToken(
