@@ -128,9 +128,6 @@ export default function RegisterScreen() {
                 category,
                 logo_url: null,
                 points_rate: 1,
-                total_customers: 0,
-                points_this_month: 0,
-                rewards_redeemed: 0,
                 qr_code: qrCode,
               });
             if (insertError) throw insertError;

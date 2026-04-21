@@ -146,7 +146,7 @@ export default function MerchantHomeScreen() {
             />
             <StatCard
               icon="zap"
-              value={`${merchant?.points_rate ?? 1}x`}
+              value={`1pt=${merchant?.points_rate ?? 1}DH`}
               label={t("profile.pointsRate")}
               color={merchantAccentColor}
               valueColor="#F9A602"

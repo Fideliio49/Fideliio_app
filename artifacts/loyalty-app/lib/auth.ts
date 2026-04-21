@@ -150,9 +150,6 @@ const createProfile = async (
       category: userData.category ?? "other",
       logo_url: null,
       points_rate: userData.pointsRate ?? 1,
-      total_customers: 0,
-      points_this_month: 0,
-      rewards_redeemed: 0,
       qr_code: generateQrCode("FID-MERCH"),
     });
     if (error) throw error;

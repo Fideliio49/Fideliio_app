@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   useWindowDimensions,
   StatusBar,
   Alert,
+  Animated,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
@@ -59,6 +60,74 @@ function ZelligeOverlay({ width, height }: { width: number; height: number }) {
   );
 }
 
+// ── Toast in-app ────────────────────────────────────────────
+function PointsToast({
+  message,
+  visible,
+  accentColor,
+}: {
+  message: string;
+  visible: boolean;
+  accentColor: string;
+}) {
+  const translateY = useRef(new Animated.Value(-100)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.spring(translateY, {
+          toValue: 0,
+          tension: 80,
+          friction: 10,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(translateY, {
+          toValue: -100,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [visible]);
+
+  return (
+    <Animated.View
+      style={[
+        styles.toast,
+        {
+          backgroundColor: accentColor,
+          transform: [{ translateY }],
+          opacity,
+        },
+      ]}
+      pointerEvents="none"
+    >
+      <View style={styles.toastInner}>
+        <View style={styles.toastIconWrap}>
+          <Feather name="zap" size={20} color="#fff" />
+        </View>
+        <Text style={[styles.toastText, { fontFamily: "Inter_700Bold" }]}>
+          {message}
+        </Text>
+      </View>
+    </Animated.View>
+  );
+}
+
 export default function CustomerHomeScreen() {
   const colors = useColors();
   const { user, accentColor, colorTheme } = useApp();
@@ -74,17 +143,61 @@ export default function CustomerHomeScreen() {
   const [nextTarget, setNextTarget] = useState(200);
   const [merchantPoints, setMerchantPoints] = useState<any[]>([]);
 
+  // ── Toast state ──
+  const [toastMsg, setToastMsg] = useState("");
+  const [toastVisible, setToastVisible] = useState(false);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const customerRef = useRef<any>(null);
+
   const topPad = Platform.OS === "web" ? 67 : STATUS_BAR_HEIGHT;
   const bottomPad = Platform.OS === "web" ? 34 : 0;
   const heroPatternHeight = topPad + 240;
   const progress = Math.min(1, totalPoints / Math.max(1, nextTarget));
 
+  function showToast(msg: string) {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToastMsg(msg);
+    setToastVisible(true);
+    toastTimer.current = setTimeout(() => setToastVisible(false), 3500);
+  }
+
+  // ── Supabase Realtime — écoute les nouvelles transactions ──
+  // ✅ APRÈS — se lance quand customer est chargé dans le state
+  useEffect(() => {
+    if (!customer?.id) return;
+
+    const channel = supabase
+      .channel(`customer-transactions-${customer.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "transactions",
+          filter: `customer_id=eq.${customer.id}`,
+        },
+        (payload) => {
+          const tx = payload.new as any;
+          if (tx.points_earned > 0) {
+            showToast(
+              `+${tx.points_earned} points gagnés chez ${tx.merchant_name} ! 🎉`,
+            );
+            loadData();
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [customer?.id]); // ✅ dépend du state, pas de la ref
+
   useFocusEffect(
     useCallback(() => {
       StatusBar.setBarStyle("light-content", true);
-      if (Platform.OS === "android") {
+      if (Platform.OS === "android")
         StatusBar.setBackgroundColor("transparent", true);
-      }
       loadData();
     }, [user?.id]),
   );
@@ -96,16 +209,17 @@ export default function CustomerHomeScreen() {
       .from("customers")
       .select("*")
       .eq("user_id", user.id)
-      .single();
+      .maybeSingle();
 
     if (!customerData) return;
     setCustomer(customerData);
+    customerRef.current = customerData; // ✅ garde la ref pour Realtime
 
     const { data: pointsData } = await supabase
       .from("customer_total_points")
       .select("total_points")
       .eq("customer_id", customerData.id)
-      .single();
+      .maybeSingle();
 
     const pts = pointsData?.total_points ?? 0;
     setTotalPoints(pts);
@@ -149,7 +263,6 @@ export default function CustomerHomeScreen() {
         const mp = mpData.find((m: any) => m.merchant_id === r.merchant_id);
         return mp && mp.total_points >= r.points_required;
       });
-
       setRedeemableRewards(redeemable);
 
       const nonRedeemable = (rewards ?? []).filter((r: any) => {
@@ -166,7 +279,6 @@ export default function CustomerHomeScreen() {
     }
   }
 
-  // ─── Utiliser une récompense ──────────────────────────────
   async function handleRedeem(reward: any) {
     if (!customer) return;
 
@@ -193,7 +305,6 @@ export default function CustomerHomeScreen() {
           onPress: async () => {
             try {
               const { nanoid } = await import("nanoid/non-secure");
-
               const { error: rdError } = await supabase
                 .from("redemptions")
                 .insert({
@@ -205,7 +316,6 @@ export default function CustomerHomeScreen() {
                   merchant_name: reward.merchant_name,
                   redeemed_at: new Date().toISOString(),
                 });
-
               if (rdError) throw rdError;
 
               const { error: txError } = await supabase
@@ -221,13 +331,8 @@ export default function CustomerHomeScreen() {
                   points_earned: -reward.points_required,
                   created_at: new Date().toISOString(),
                 });
-
               if (txError) throw txError;
 
-              Alert.alert(
-                "✅ Récompense utilisée !",
-                `${reward.name} appliquée.`,
-              );
               await loadData();
             } catch (err: any) {
               Alert.alert(
@@ -248,6 +353,14 @@ export default function CustomerHomeScreen() {
         backgroundColor="transparent"
         barStyle="light-content"
       />
+
+      {/* ✅ Toast in-app — affiché par-dessus tout */}
+      <PointsToast
+        message={toastMsg}
+        visible={toastVisible}
+        accentColor={accentColor}
+      />
+
       <ScrollView
         style={[styles.container, { backgroundColor: colors.background }]}
         contentContainerStyle={{ paddingBottom: 100 + bottomPad }}
@@ -299,7 +412,6 @@ export default function CustomerHomeScreen() {
         </LinearGradient>
 
         <View style={[styles.content, { backgroundColor: colors.background }]}>
-          {/* Section Presque là ! */}
           {progressItems.length > 0 && (
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
@@ -333,13 +445,11 @@ export default function CustomerHomeScreen() {
                   </Text>
                 </TouchableOpacity>
               </View>
-
               {progressItems.map((item: any) => {
                 const pct = item.progress_percent;
                 const remaining = item.points_remaining;
                 const icon = CATEGORY_ICONS[item.category] ?? "star";
                 const isUrgent = pct >= 95;
-
                 return (
                   <TouchableOpacity
                     key={item.merchant_id}
@@ -353,7 +463,6 @@ export default function CustomerHomeScreen() {
                       },
                     ]}
                   >
-                    {/* Badge urgence en haut à droite — plus de position absolute */}
                     {isUrgent && (
                       <View
                         style={[
@@ -371,8 +480,6 @@ export default function CustomerHomeScreen() {
                         </Text>
                       </View>
                     )}
-
-                    {/* Ligne principale */}
                     <View style={styles.progressCardRow}>
                       <View
                         style={[
@@ -428,8 +535,6 @@ export default function CustomerHomeScreen() {
                         </Text>
                       </View>
                     </View>
-
-                    {/* Barre de progression */}
                     <View style={styles.progressBarSection}>
                       <Text
                         style={[
@@ -462,7 +567,6 @@ export default function CustomerHomeScreen() {
             </View>
           )}
 
-          {/* Récompenses disponibles */}
           {redeemableRewards.length > 0 && (
             <View style={styles.section}>
               <Text
@@ -537,7 +641,6 @@ export default function CustomerHomeScreen() {
             </View>
           )}
 
-          {/* Activité récente */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text
@@ -692,4 +795,38 @@ const styles = StyleSheet.create({
   progressFillBar: { height: 6, borderRadius: 99 },
   useBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99 },
   useBtnText: { color: "#fff", fontSize: 13 },
+
+  // ── Toast ──
+  toast: {
+    position: "absolute",
+    top: STATUS_BAR_HEIGHT + 12,
+    left: 16,
+    right: 16,
+    borderRadius: 16,
+    zIndex: 9999,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  toastInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 16,
+  },
+  toastIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.25)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  toastText: {
+    color: "#fff",
+    fontSize: 15,
+    flex: 1,
+  },
 });

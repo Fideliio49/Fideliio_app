@@ -103,7 +103,7 @@ export default function CustomerProfileScreen() {
         .from("customers")
         .select("*")
         .eq("user_id", user.id)
-        .single();
+        .maybeSingle();
 
       if (error) {
         console.error("Erreur chargement profil:", error);
@@ -121,7 +121,7 @@ export default function CustomerProfileScreen() {
         .from("customer_total_points")
         .select("total_points")
         .eq("customer_id", customerData.id)
-        .single();
+        .maybeSingle();
 
       setTotalPoints(pointsData?.total_points ?? 0);
     } catch (err) {
