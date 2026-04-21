@@ -5,7 +5,6 @@ function generateQrCode(prefix: string): string {
   return `${prefix}-${nanoid(8).toUpperCase()}`;
 }
 
-// ─── REGISTER WITH EMAIL (sends OTP — no password) ───────────────────────────
 export const registerWithEmail = async (
   email: string,
   userData: {
@@ -35,7 +34,6 @@ export const registerWithEmail = async (
   if (error) throw error;
 };
 
-// ─── VERIFY EMAIL OTP ─────────────────────────────────────────────────────────
 export const verifyEmailOTP = async (
   email: string,
   token: string,
@@ -48,31 +46,23 @@ export const verifyEmailOTP = async (
     type: "email",
   });
   if (error) throw error;
-
   const userId = data.user!.id;
   const table = userType === "customer" ? "customers" : "merchants";
-
   const { data: existing } = await supabase
     .from(table)
     .select("id")
     .eq("user_id", userId)
-    .maybeSingle(); // ✅ maybeSingle au lieu de single
-
-  if (!existing) {
-    await createProfile(userId, userData, userType);
-  }
-
+    .maybeSingle();
+  if (!existing) await createProfile(userId, userData, userType);
   return data;
 };
 
-// ─── SEND PHONE OTP ───────────────────────────────────────────────────────────
 export const sendPhoneOTP = async (phone: string) => {
   const formatted = phone.startsWith("+") ? phone : `+${phone}`;
   const { error } = await supabase.auth.signInWithOtp({ phone: formatted });
   if (error) throw error;
 };
 
-// ─── VERIFY PHONE OTP ─────────────────────────────────────────────────────────
 export const verifyPhoneOTP = async (
   phone: string,
   token: string,
@@ -86,23 +76,19 @@ export const verifyPhoneOTP = async (
   userType: "customer" | "merchant",
 ) => {
   const formatted = phone.startsWith("+") ? phone : `+${phone}`;
-
   const { data, error } = await supabase.auth.verifyOtp({
     phone: formatted,
     token,
     type: "sms",
   });
   if (error) throw error;
-
   const userId = data.user!.id;
   const table = userType === "customer" ? "customers" : "merchants";
-
   const { data: existing } = await supabase
     .from(table)
     .select("id")
     .eq("user_id", userId)
-    .maybeSingle(); // ✅ maybeSingle
-
+    .maybeSingle();
   if (!existing) {
     if (!userData.firstName) {
       await supabase.auth.signOut();
@@ -120,11 +106,9 @@ export const verifyPhoneOTP = async (
       },
     });
   }
-
   return data;
 };
 
-// ─── CREATE PROFILE IN DB ─────────────────────────────────────────────────────
 const createProfile = async (
   userId: string,
   userData: any,
@@ -156,7 +140,6 @@ const createProfile = async (
   }
 };
 
-// ─── LOGIN WITH EMAIL + PASSWORD ──────────────────────────────────────────────
 export const loginWithEmail = async (email: string, password: string) => {
   const { data, error } = await supabase.auth.signInWithPassword({
     email,
@@ -166,7 +149,6 @@ export const loginWithEmail = async (email: string, password: string) => {
   return data;
 };
 
-// ─── LOGIN WITH PHONE OTP (login only, no new account) ───────────────────────
 export const loginWithPhone = async (phone: string) => {
   const formatted = phone.startsWith("+") ? phone : `+${phone}`;
   const { error } = await supabase.auth.signInWithOtp({
@@ -176,13 +158,11 @@ export const loginWithPhone = async (phone: string) => {
   if (error) throw error;
 };
 
-// ─── LOGOUT ───────────────────────────────────────────────────────────────────
 export const logout = async () => {
   const { error } = await supabase.auth.signOut();
   if (error) throw error;
 };
 
-// ─── RESET PASSWORD ───────────────────────────────────────────────────────────
 export const resetPassword = async (email: string) => {
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: "fideliio://reset-password",
@@ -190,31 +170,29 @@ export const resetPassword = async (email: string) => {
   if (error) throw error;
 };
 
-// ─── DELETE ACCOUNT ✅ via Edge Function (suppression complète) ───────────────
+// ─── DELETE ACCOUNT via Edge Function ────────────────────────────────────────
 export const deleteAccount = async (_userType: "customer" | "merchant") => {
-  // Récupérer le token de session actuel
   const {
     data: { session },
   } = await supabase.auth.getSession();
   if (!session) throw new Error("Non authentifié");
 
-  // Appeler la Edge Function avec le token JWT
   const response = await fetch(
-    `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/delete-account`,
+    `https://hdzhdwelgqmdvgwrlxud.supabase.co/functions/v1/delete-account`,
     {
       method: "POST",
       headers: {
         Authorization: `Bearer ${session.access_token}`,
         "Content-Type": "application/json",
       },
+      body: JSON.stringify({}),
     },
   );
 
-  const result = await response.json();
   if (!response.ok) {
-    throw new Error(result.error ?? "Suppression échouée");
+    const text = await response.text();
+    throw new Error(text || "Suppression échouée");
   }
 
-  // Déconnecter localement après suppression réussie
   await supabase.auth.signOut();
 };

@@ -381,8 +381,12 @@ export default function MerchantProfileScreen() {
           text: isRTL ? "حذف نهائي" : "Supprimer définitivement",
           style: "destructive",
           onPress: async () => {
-            await deleteAccount();
-            router.replace("/onboarding/language");
+            try {
+              await deleteAccount();
+              router.replace("/onboarding/language");
+            } catch (e: any) {
+              Alert.alert("Erreur", e.message || "Suppression échouée");
+            }
           },
         },
       ],
@@ -803,7 +807,7 @@ export default function MerchantProfileScreen() {
         </KeyboardAwareScrollView>
       </BottomModal>
 
-      {/* ── Modal Presets rapides ── */}
+      {/* ─a�� Modal Presets rapides ── */}
       <BottomModal
         visible={showPresetsModal}
         onClose={() => setShowPresetsModal(false)}

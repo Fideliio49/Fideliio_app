@@ -197,15 +197,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   async function deleteAccount() {
-    if (user) {
-      try {
-        await AuthLib.deleteAccount(user.role);
-      } catch (e) {
-        console.warn("deleteAccount error:", e);
-      }
+    if (!user) return;
+
+    try {
+      await AuthLib.deleteAccount(user.role);
+    } catch (e: any) {
+      // ✅ Afficher l'erreur au lieu de l'ignorer
+      throw e;
     }
+
     setUserState(null);
-    setIsOnboarded(false); // Reset complet seulement si suppression compte
+    setIsOnboarded(false);
     setColorThemeState("light");
     setAccentColorState(DEFAULT_ACCENT);
     setMerchantAccentColorState(DEFAULT_MERCHANT_ACCENT);
