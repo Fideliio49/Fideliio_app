@@ -11,6 +11,11 @@ React Native (Expo) mobile loyalty program app supporting French, Arabic (RTL), 
 
 **Brand colors:** Navy `#1a1a6e` → Terracotta `#C85A17` with Gold accent `#F9A602`
 
+**Web icon fix:**
+- `app/+html.tsx` injects `@font-face` CSS for `'feather'` and `'Material Design Icons'` pointing to `/fonts/Feather.ttf` and `/fonts/MaterialCommunityIcons.ttf`
+- `public/fonts/` contains static copies of the Feather and MaterialCommunityIcons TTF files served by Metro
+- This bypasses expo-font's web URL resolution which was generating inaccessible localhost URLs in the Replit proxy setup, causing all icons to render as □ boxes
+
 **Architecture:**
 - Frontend-only with AsyncStorage (no backend required)
 - `context/AppContext.tsx` — user, language, colorTheme, accentColor state
