@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { Card } from "./ui/Card";
 import { Badge } from "./ui/Badge";
 import type { MerchantData } from "@/context/DataContext";
+import { fs, iconSize } from "@/utils/responsive";
 
 const CATEGORY_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
   restaurant: "coffee",
@@ -32,7 +33,7 @@ export function MerchantCard({ merchant, onPress }: MerchantCardProps) {
       <Card style={styles.card}>
         <View style={styles.row}>
           <View style={[styles.iconBox, { backgroundColor: colors.purple100, borderRadius: colors.radius }]}>
-            <Feather name={icon} size={22} color={colors.primary} />
+            <Feather name={icon} size={iconSize(22)} color={colors.primary} />
           </View>
           <View style={styles.info}>
             <Text style={[styles.name, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]}>
@@ -76,18 +77,18 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   name: {
-    fontSize: 15,
+    fontSize: fs(15),
   },
   category: {
-    fontSize: 13,
+    fontSize: fs(13),
   },
   rate: {
     alignItems: "flex-end",
   },
   rateNumber: {
-    fontSize: 20,
+    fontSize: fs(20),
   },
   rateSub: {
-    fontSize: 11,
+    fontSize: fs(11),
   },
 });

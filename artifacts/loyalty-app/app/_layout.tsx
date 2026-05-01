@@ -26,8 +26,8 @@ import { AppProvider } from "@/context/AppContext";
 import { DataProvider } from "@/context/DataContext";
 import { GlobalToast } from "@/components/GlobalToast";
 
-// ✅ Fix Android : charger explicitement la font des icônes Feather
-import { Feather } from "@expo/vector-icons";
+// ✅ TOUS les icon sets utilisés dans l'app — Android en a besoin explicitement
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 
 SplashScreen.preventAutoHideAsync();
 const queryClient = new QueryClient();
@@ -75,10 +75,11 @@ export default function RootLayout() {
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
-    // ✅ Charge la font Feather explicitement — évite les carrés sur Android.
-    // Sur iOS, expo-vector-icons la charge automatiquement via le bundle natif,
-    // mais Android en a besoin dans useFonts pour garantir le rendu correct.
+    // ✅ Feather — utilisé dans Input, role, home, profile, tab bar...
     ...Feather.font,
+    // ✅ MaterialCommunityIcons — utilisé dans SplashAnimation
+    // (qrcode-scan, percent, cash-multiple, puzzle-outline, tag-outline)
+    ...MaterialCommunityIcons.font,
   });
 
   useEffect(() => {

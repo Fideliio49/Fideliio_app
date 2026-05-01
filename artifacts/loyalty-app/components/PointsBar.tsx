@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { useColors } from "@/hooks/useColors";
 import { useTranslation } from "react-i18next";
+import { fs } from "@/utils/responsive";
 
 interface PointsBarProps {
   currentPoints: number;
@@ -49,10 +50,10 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   label: {
-    fontSize: 13,
+    fontSize: fs(13),
   },
   value: {
-    fontSize: 13,
+    fontSize: fs(13),
   },
   track: {
     height: 8,

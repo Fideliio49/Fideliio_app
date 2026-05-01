@@ -10,6 +10,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { iconSize } from "@/utils/responsive";
 
 const { width: W } = Dimensions.get("window");
 
@@ -66,9 +67,9 @@ function RingIcon({
   return (
     <Animated.View style={[styles.iconWrapper, animStyle]}>
       {icon.lib === "feather" ? (
-        <Feather name={icon.name as any} size={20} color="rgba(255,255,255,0.75)" />
+        <Feather name={icon.name as any} size={iconSize(20)} color="rgba(255,255,255,0.75)" />
       ) : (
-        <MaterialCommunityIcons name={icon.name as any} size={20} color="rgba(255,255,255,0.75)" />
+        <MaterialCommunityIcons name={icon.name as any} size={iconSize(20)} color="rgba(255,255,255,0.75)" />
       )}
     </Animated.View>
   );
@@ -201,9 +202,9 @@ const styles = StyleSheet.create({
   },
   fLetter: {
     color: "#fff",
-    fontSize: 64,
+    fontSize: iconSize(64),
     fontFamily: "Inter_700Bold",
-    lineHeight: 72,
+    lineHeight: iconSize(72),
   },
   goldDot: {
     position: "absolute",

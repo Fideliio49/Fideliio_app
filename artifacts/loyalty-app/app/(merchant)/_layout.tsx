@@ -10,6 +10,7 @@ import { useApp } from "@/context/AppContext";
 import { useTranslation } from "react-i18next";
 import { iconSize } from "@/utils/responsive";
 
+// ✅ NativeTabLayout avec SF Symbols — iOS uniquement
 function NativeTabLayout() {
   const { t } = useTranslation();
   return (
@@ -46,6 +47,7 @@ function ClassicTabLayout() {
   const isDark = colorScheme === "dark";
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
+
   return (
     <Tabs
       screenOptions={{
@@ -127,6 +129,9 @@ function ClassicTabLayout() {
 }
 
 export default function MerchantTabLayout() {
-  if (isLiquidGlassAvailable()) return <NativeTabLayout />;
+  // ✅ SF Symbols (NativeTabLayout) = iOS uniquement.
+  // Sur Android et Web, on force ClassicTabLayout avec Feather icons.
+  if (Platform.OS === "ios" && isLiquidGlassAvailable())
+    return <NativeTabLayout />;
   return <ClassicTabLayout />;
 }

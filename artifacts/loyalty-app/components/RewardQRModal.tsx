@@ -13,6 +13,7 @@ import QRCode from "react-native-qrcode-svg";
 import { supabase } from "@/lib/supabase";
 import { useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
+import { fs, iconSize } from "@/utils/responsive";
 
 interface RewardQRModalProps {
   visible: boolean;
@@ -192,7 +193,7 @@ export function RewardQRModal({
               QR Code récompense
             </Text>
             <TouchableOpacity onPress={onClose}>
-              <Feather name="x" size={22} color={colors.mutedForeground} />
+              <Feather name="x" size={iconSize(22)} color={colors.mutedForeground} />
             </TouchableOpacity>
           </View>
 
@@ -284,7 +285,7 @@ export function RewardQRModal({
             >
               <Feather
                 name="clock"
-                size={16}
+                size={iconSize(16)}
                 color={countdown <= 30 ? "#E74C3C" : accentColor}
               />
               <Text
@@ -319,7 +320,7 @@ export function RewardQRModal({
                 { backgroundColor: "#27AE60", opacity: toastOpacity },
               ]}
             >
-              <Feather name="check-circle" size={16} color="#fff" />
+              <Feather name="check-circle" size={iconSize(16)} color="#fff" />
               <Text
                 style={[styles.toastText, { fontFamily: "Inter_600SemiBold" }]}
               >
@@ -360,10 +361,10 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingVertical: 16,
   },
-  title: { fontSize: 18 },
+  title: { fontSize: fs(18) },
   rewardInfo: { padding: 14, marginBottom: 20, alignItems: "center" },
-  rewardName: { fontSize: 16 },
-  rewardSub: { fontSize: 13, marginTop: 4 },
+  rewardName: { fontSize: fs(16) },
+  rewardSub: { fontSize: fs(13), marginTop: 4 },
   qrContainer: { alignItems: "center", gap: 12, marginBottom: 20 },
   qrPlaceholder: {
     alignItems: "center",
@@ -381,7 +382,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
-  qrHint: { fontSize: 13, textAlign: "center" },
+  qrHint: { fontSize: fs(13), textAlign: "center" },
   countdownWrap: {
     flexDirection: "row",
     alignItems: "center",
@@ -391,8 +392,8 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     justifyContent: "center",
   },
-  countdownText: { fontSize: 16 },
-  secNote: { fontSize: 12, textAlign: "center" },
+  countdownText: { fontSize: fs(16) },
+  secNote: { fontSize: fs(12), textAlign: "center" },
   toast: {
     position: "absolute",
     bottom: 20,
@@ -405,5 +406,5 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     elevation: 8,
   },
-  toastText: { color: "#fff", fontSize: 13, flex: 1 },
+  toastText: { color: "#fff", fontSize: fs(13), flex: 1 },
 });

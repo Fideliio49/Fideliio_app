@@ -5,6 +5,7 @@ import { useColors } from "@/hooks/useColors";
 import { useTranslation } from "react-i18next";
 import { Card } from "./ui/Card";
 import type { Reward } from "@/context/DataContext";
+import { fs, iconSize } from "@/utils/responsive";
 
 const TYPE_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
   discount: "percent",
@@ -36,7 +37,7 @@ export function RewardCard({
     <Card style={styles.card}>
       <View style={styles.header}>
         <View style={[styles.iconBox, { backgroundColor: canRedeem ? colors.green100 : colors.muted, borderRadius: 10 }]}>
-          <Feather name={icon} size={20} color={canRedeem ? colors.secondary : colors.mutedForeground} />
+          <Feather name={icon} size={iconSize(20)} color={canRedeem ? colors.secondary : colors.mutedForeground} />
         </View>
         <View style={styles.info}>
           <Text style={[styles.name, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]}>
@@ -109,20 +110,20 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   name: {
-    fontSize: 14,
+    fontSize: fs(14),
   },
   merchant: {
-    fontSize: 12,
+    fontSize: fs(12),
   },
   pts: {
-    fontSize: 12,
+    fontSize: fs(12),
   },
   redeemBtn: {
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
   redeemText: {
-    fontSize: 13,
+    fontSize: fs(13),
   },
   progressWrap: {
     marginTop: 10,

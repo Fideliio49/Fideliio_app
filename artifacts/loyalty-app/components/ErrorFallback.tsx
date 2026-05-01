@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { reloadAppAsync } from "expo";
 import React, { useState } from "react";
+import { fs, iconSize } from "@/utils/responsive";
 import {
   Modal,
   Platform,
@@ -64,7 +65,7 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
             },
           ]}
         >
-          <Feather name="alert-circle" size={20} color={colors.foreground} />
+          <Feather name="alert-circle" size={iconSize(20)} color={colors.foreground} />
         </Pressable>
       ) : null}
 
@@ -131,7 +132,7 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
                     { opacity: pressed ? 0.6 : 1 },
                   ]}
                 >
-                  <Feather name="x" size={24} color={colors.foreground} />
+                  <Feather name="x" size={iconSize(24)} color={colors.foreground} />
                 </Pressable>
               </View>
 
@@ -188,13 +189,13 @@ const styles = StyleSheet.create({
     maxWidth: 600,
   },
   title: {
-    fontSize: 28,
+    fontSize: fs(28),
     fontWeight: "700",
     textAlign: "center",
     lineHeight: 40,
   },
   message: {
-    fontSize: 16,
+    fontSize: fs(16),
     textAlign: "center",
     lineHeight: 24,
   },
@@ -226,7 +227,7 @@ const styles = StyleSheet.create({
   buttonText: {
     fontWeight: "600",
     textAlign: "center",
-    fontSize: 16,
+    fontSize: fs(16),
   },
   modalOverlay: {
     flex: 1,
@@ -249,7 +250,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: fs(20),
     fontWeight: "600",
   },
   closeButton: {
@@ -271,7 +272,7 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   errorText: {
-    fontSize: 12,
+    fontSize: fs(12),
     lineHeight: 18,
     width: "100%",
   },
