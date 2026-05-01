@@ -9,6 +9,7 @@ import {
   StatusBar,
   Animated,
 } from "react-native";
+import { fs, iconSize } from "@/utils/responsive";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useFocusEffect } from "expo-router";
@@ -24,7 +25,6 @@ import { supabase } from "@/lib/supabase";
 import { useTranslation } from "react-i18next";
 
 type ScanStep = "scanning" | "quickPoints" | "amount" | "success";
-
 const QUICK_AMOUNTS = [5, 10, 20, 50, 100, 200];
 const MULTIPLIERS = [1, 2, 5, 10, 20, 50];
 
@@ -46,8 +46,7 @@ async function sendPointsNotification(
       .select("push_token")
       .eq("id", customerId)
       .maybeSingle();
-    if (!customer?.push_token) return;
-    if (!customer.push_token.startsWith("ExponentPushToken")) return;
+    if (!customer?.push_token?.startsWith("ExponentPushToken")) return;
     await fetch("https://exp.host/--/api/v2/push/send", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -62,6 +61,17 @@ async function sendPointsNotification(
   } catch {}
 }
 
+// ✅ Récupère le max des récompenses du commerçant
+async function getMaxRewardPoints(merchantId: string): Promise<number> {
+  const { data } = await supabase
+    .from("rewards")
+    .select("points_required")
+    .eq("merchant_id", merchantId)
+    .eq("is_active", true);
+  if (!data || data.length === 0) return 999999;
+  return Math.max(...data.map((r: any) => r.points_required));
+}
+
 export default function MerchantScanScreen() {
   const colors = useColors();
   const { user, colorTheme, merchantAccentColor, isRTL } = useApp();
@@ -72,6 +82,7 @@ export default function MerchantScanScreen() {
   const [step, setStep] = useState<ScanStep>("scanning");
   const [scannedCustomer, setScannedCustomer] = useState<any>(null);
   const [customerPoints, setCustomerPoints] = useState(0);
+  const [maxRewardPoints, setMaxRewardPoints] = useState(999999);
   const [merchant, setMerchant] = useState<any>(null);
   const [rawAmount, setRawAmount] = useState("0");
   const [multiplier, setMultiplier] = useState(1);
@@ -80,9 +91,11 @@ export default function MerchantScanScreen() {
   const [successData, setSuccessData] = useState<{
     points: number;
     name: string;
+    type: "earned" | "redeemed";
   } | null>(null);
   const [webCode, setWebCode] = useState("");
-  const [activelyScanning, setActivelyScanning] = useState(true);
+  const [activelyScanning, setActivelyScanning] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
   const [quickPoints, setQuickPoints] = useState<number[]>([
     10, 25, 50, 100, 200, 500,
   ]);
@@ -98,11 +111,21 @@ export default function MerchantScanScreen() {
   const pointsRate = merchant?.points_rate ?? 1;
   const points = Math.floor(effectiveAmount / pointsRate);
 
+  // ✅ Points restants avant le cap
+  const isAtMax = customerPoints >= maxRewardPoints;
+  const remainingToMax = Math.max(0, maxRewardPoints - customerPoints);
+
   useFocusEffect(
     useCallback(() => {
       StatusBar.setBarStyle("light-content", true);
       if (Platform.OS === "android") StatusBar.setBackgroundColor("#000", true);
       loadMerchant();
+      setIsFocused(true);
+      setActivelyScanning(true);
+      return () => {
+        setIsFocused(false);
+        setActivelyScanning(false);
+      };
     }, [user]),
   );
 
@@ -153,7 +176,7 @@ export default function MerchantScanScreen() {
         friction: 8,
         useNativeDriver: true,
       }).start();
-      const timer = setTimeout(handleReset, 800);
+      const timer = setTimeout(handleReset, 2500);
       return () => clearTimeout(timer);
     }
   }, [step]);
@@ -162,10 +185,15 @@ export default function MerchantScanScreen() {
     if (!activelyScanning) return;
     setActivelyScanning(false);
     try {
+      const trimmed = data.trim();
+      if (trimmed.startsWith("REDEEM-")) {
+        await handleRedemptionToken(trimmed);
+        return;
+      }
       const { data: customerData, error } = await supabase
         .from("customers")
         .select("*")
-        .eq("qr_code", data.trim())
+        .eq("qr_code", trimmed)
         .maybeSingle();
       if (error || !customerData) {
         Alert.alert("QR code invalide", "Aucun client Fideliio trouvé.", [
@@ -179,14 +207,198 @@ export default function MerchantScanScreen() {
         .eq("customer_id", customerData.id)
         .eq("merchant_id", merchant?.id)
         .maybeSingle();
-      setCustomerPoints(Math.max(0, pointsData?.total_points ?? 0));
+      const pts = Math.max(0, pointsData?.total_points ?? 0);
+      setCustomerPoints(pts);
+
+      // ✅ Charger le max des récompenses
+      const max = await getMaxRewardPoints(merchant?.id);
+      setMaxRewardPoints(max);
+
       setScannedCustomer(customerData);
+
+      // ✅ Si client au max → alerte immédiate mais on continue vers quickPoints
+      // (le commerçant voit le message d'alerte sur l'écran quickPoints)
       setStep("quickPoints");
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      // ✅ Alerte immédiate si client au max
+      if (pts >= max) {
+        setTimeout(() => {
+          Alert.alert(
+            isRTL ? "⚠️ الحد الأقصى مبلغ" : "⚠️ Plafond atteint",
+            isRTL
+              ? `${customerData.first_name} ${customerData.last_name} وصل إلى الحد الأقصى (${max} نقطة).
+يجب عليه استخدام مكافأة أولاً قبل إضافة نقاط جديدة.`
+              : `${customerData.first_name} ${customerData.last_name} a atteint le plafond de ${max} pts.
+Il doit utiliser une récompense avant d'en gagner de nouveaux.`,
+            [{ text: "OK" }],
+          );
+        }, 300);
+      }
     } catch {
       Alert.alert("Erreur", "Impossible de vérifier ce QR code.", [
         { text: "Réessayer", onPress: () => setActivelyScanning(true) },
       ]);
+    }
+  }
+
+  async function handleRedemptionToken(token: string) {
+    try {
+      if (!merchant) {
+        Alert.alert("Erreur", "Commerce non chargé.", [
+          { text: "OK", onPress: () => setActivelyScanning(true) },
+        ]);
+        return;
+      }
+
+      const { data: tokenData, error: tokenError } = await supabase
+        .from("redemption_tokens")
+        .select("*")
+        .eq("token", token)
+        .maybeSingle();
+      if (tokenError || !tokenData) {
+        Alert.alert("QR invalide", "Ce QR code est invalide.", [
+          { text: "OK", onPress: () => setActivelyScanning(true) },
+        ]);
+        return;
+      }
+      if (tokenData.merchant_id !== merchant.id) {
+        Alert.alert(
+          "Erreur",
+          "Cette récompense n'est pas pour votre commerce.",
+          [{ text: "OK", onPress: () => setActivelyScanning(true) }],
+        );
+        return;
+      }
+      if (tokenData.used_at) {
+        Alert.alert("Déjà utilisé", "Ce QR code a déjà été utilisé.", [
+          { text: "OK", onPress: () => setActivelyScanning(true) },
+        ]);
+        return;
+      }
+      if (new Date(tokenData.expires_at) < new Date()) {
+        Alert.alert("Expiré", "Ce QR code a expiré.", [
+          { text: "OK", onPress: () => setActivelyScanning(true) },
+        ]);
+        return;
+      }
+
+      const { data: reward } = await supabase
+        .from("rewards")
+        .select("*")
+        .eq("id", tokenData.reward_id)
+        .maybeSingle();
+      const { data: customer } = await supabase
+        .from("customers")
+        .select("*")
+        .eq("id", tokenData.customer_id)
+        .maybeSingle();
+      if (!reward || !customer) {
+        Alert.alert("Erreur", "Récompense ou client introuvable.", [
+          { text: "OK", onPress: () => setActivelyScanning(true) },
+        ]);
+        return;
+      }
+
+      const customerName = `${customer.first_name} ${customer.last_name}`;
+      // ✅ Utiliser la vue cappée pour affichage/vérification
+      const { data: currentPoints } = await supabase
+        .from("customer_merchant_points")
+        .select("total_points")
+        .eq("customer_id", customer.id)
+        .eq("merchant_id", merchant.id)
+        .maybeSingle();
+      const solde = Math.max(0, currentPoints?.total_points ?? 0);
+
+      if (solde < reward.points_required) {
+        Alert.alert(
+          "Points insuffisants",
+          `${customerName} a ${solde} pts chez vous.\nCette récompense nécessite ${reward.points_required} pts.`,
+          [{ text: "OK", onPress: () => setActivelyScanning(true) }],
+        );
+        return;
+      }
+
+      // ✅ Récupérer le SUM BRUT des transactions pour la déduction réelle
+      const { data: rawTxData } = await supabase
+        .from("transactions")
+        .select("points_earned")
+        .eq("customer_id", customer.id)
+        .eq("merchant_id", merchant.id);
+      const rawSum = (rawTxData ?? []).reduce(
+        (acc: number, tx: any) => acc + (tx.points_earned ?? 0),
+        0,
+      );
+      const pointsToDeduct = -Math.max(0, rawSum); // Négatif pour remettre à zéro
+
+      const { nanoid } = await import("nanoid/non-secure");
+
+      // ✅ Marquer token utilisé
+      await supabase
+        .from("redemption_tokens")
+        .update({ used_at: new Date().toISOString() })
+        .eq("token", token);
+
+      // ✅ Insérer la rédemption
+      await supabase.from("redemptions").insert({
+        id: nanoid(),
+        customer_id: customer.id,
+        reward_id: reward.id,
+        merchant_id: merchant.id,
+        reward_name: reward.name,
+        merchant_name: merchant.business_name,
+        points_spent: solde, // ✅ Tous les points, pas juste points_required
+        redeemed_at: new Date().toISOString(),
+      });
+
+      // ✅ Transaction négative = TOUS les points (remise à zéro totale)
+      await supabase.from("transactions").insert({
+        id: nanoid(),
+        customer_id: customer.id,
+        merchant_id: merchant.id,
+        merchant_name: merchant.business_name,
+        customer_name: customerName,
+        amount: 0,
+        multiplier: 1,
+        points_earned: pointsToDeduct, // ✅ Déduire le SUM BRUT pour revenir à zéro
+        created_at: new Date().toISOString(),
+      });
+
+      // Notification push
+      try {
+        const { data: cust } = await supabase
+          .from("customers")
+          .select("push_token")
+          .eq("id", customer.id)
+          .maybeSingle();
+        if (cust?.push_token?.startsWith("ExponentPushToken")) {
+          await fetch("https://exp.host/--/api/v2/push/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              to: cust.push_token,
+              title: "🎁 Récompense validée !",
+              body: `Votre récompense "${reward.name}" a été appliquée chez ${merchant.business_name}.`,
+              sound: "default",
+              priority: "high",
+            }),
+          });
+        }
+      } catch {}
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setSuccessData({
+        points: solde,
+        name: `${customer.first_name} ${customer.last_name[0]}.`,
+        type: "redeemed",
+      });
+      setStep("success");
+    } catch (err: any) {
+      Alert.alert(
+        "Erreur",
+        err.message || "Impossible d'appliquer la récompense.",
+        [{ text: "OK", onPress: () => setActivelyScanning(true) }],
+      );
     }
   }
 
@@ -208,13 +420,42 @@ export default function MerchantScanScreen() {
       .eq("customer_id", customerData.id)
       .eq("merchant_id", merchant?.id)
       .maybeSingle();
-    setCustomerPoints(Math.max(0, pointsData?.total_points ?? 0));
+    const pts = Math.max(0, pointsData?.total_points ?? 0);
+    setCustomerPoints(pts);
+    const max = await getMaxRewardPoints(merchant?.id);
+    setMaxRewardPoints(max);
     setScannedCustomer(customerData);
     setStep("quickPoints");
+    // ✅ Alerte si client au max (web)
+    if (pts >= max) {
+      setTimeout(() => {
+        Alert.alert(
+          "⚠️ Plafond atteint",
+          `${customerData.first_name} ${customerData.last_name} a atteint le plafond de ${max} pts.
+Il doit utiliser une récompense avant d'en gagner de nouveaux.`,
+          [{ text: "OK" }],
+        );
+      }, 300);
+    }
   }
 
   async function handleQuickPointsValidate(presetPoints: number) {
     if (!scannedCustomer || !merchant) return;
+
+    // ✅ Bloquer si client au max
+    if (isAtMax) {
+      Alert.alert(
+        isRTL ? "وصل إلى الحد الأقصى" : "Plafond atteint",
+        isRTL
+          ? `هذا العميل وصل إلى الحد الأقصى (${maxRewardPoints} نقطة). يجب أن يستخدم مكافأة أولاً.`
+          : `Ce client a atteint le plafond de ${maxRewardPoints} pts. Il doit d'abord utiliser une récompense.`,
+      );
+      return;
+    }
+
+    // ✅ Limiter les points ajoutés au restant disponible
+    const effectivePoints = Math.min(presetPoints, remainingToMax);
+
     setLoadingPreset(presetPoints);
     try {
       const { nanoid } = await import("nanoid/non-secure");
@@ -226,7 +467,7 @@ export default function MerchantScanScreen() {
         customer_name: `${scannedCustomer.first_name} ${scannedCustomer.last_name}`,
         amount: 0,
         multiplier: 1,
-        points_earned: presetPoints,
+        points_earned: effectivePoints,
         created_at: new Date().toISOString(),
       });
       if (error) throw error;
@@ -234,11 +475,12 @@ export default function MerchantScanScreen() {
       sendPointsNotification(
         scannedCustomer.id,
         merchant.business_name,
-        presetPoints,
+        effectivePoints,
       );
       setSuccessData({
-        points: presetPoints,
+        points: effectivePoints,
         name: `${scannedCustomer.first_name} ${scannedCustomer.last_name[0]}.`,
+        type: "earned",
       });
       setStep("success");
     } catch (err: any) {
@@ -250,6 +492,20 @@ export default function MerchantScanScreen() {
 
   async function handleValidate() {
     if (!scannedCustomer || !merchant || amountNum === 0) return;
+
+    // ✅ Bloquer si client au max
+    if (isAtMax) {
+      Alert.alert(
+        isRTL ? "وصل إلى الحد الأقصى" : "Plafond atteint",
+        isRTL
+          ? `هذا العميل وصل إلى الحد الأقصى (${maxRewardPoints} نقطة).`
+          : `Ce client a atteint le plafond de ${maxRewardPoints} pts. Il doit d'abord utiliser une récompense.`,
+      );
+      return;
+    }
+
+    const effectivePoints = Math.min(points, remainingToMax);
+
     setLoading(true);
     try {
       const { nanoid } = await import("nanoid/non-secure");
@@ -261,7 +517,7 @@ export default function MerchantScanScreen() {
         customer_name: `${scannedCustomer.first_name} ${scannedCustomer.last_name}`,
         amount: effectiveAmount,
         multiplier,
-        points_earned: points,
+        points_earned: effectivePoints,
         created_at: new Date().toISOString(),
       });
       if (error) throw error;
@@ -269,11 +525,12 @@ export default function MerchantScanScreen() {
       sendPointsNotification(
         scannedCustomer.id,
         merchant.business_name,
-        points,
+        effectivePoints,
       );
       setSuccessData({
-        points,
+        points: effectivePoints,
         name: `${scannedCustomer.first_name} ${scannedCustomer.last_name[0]}.`,
+        type: "earned",
       });
       setStep("success");
     } catch (err: any) {
@@ -309,6 +566,7 @@ export default function MerchantScanScreen() {
     setStep("scanning");
     setScannedCustomer(null);
     setCustomerPoints(0);
+    setMaxRewardPoints(999999);
     setRawAmount("0");
     setMultiplier(1);
     setSuccessData(null);
@@ -317,8 +575,9 @@ export default function MerchantScanScreen() {
     setLoadingPreset(null);
   }
 
-  // ── SUCCESS ──────────────────────────────────────────────────
+  // ── SUCCESS ──
   if (step === "success" && successData) {
+    const isRedeemed = successData.type === "redeemed";
     return (
       <View
         style={[styles.container, { backgroundColor: merchantAccentColor }]}
@@ -327,19 +586,37 @@ export default function MerchantScanScreen() {
         <View style={styles.centeredWrap}>
           <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
             <View style={styles.successCircle}>
-              <Feather name="check" size={72} color={merchantAccentColor} />
+              <Feather
+                name={isRedeemed ? "gift" : "check"}
+                size={72}
+                color={merchantAccentColor}
+              />
             </View>
           </Animated.View>
           <Text style={[styles.successTitle, { fontFamily: "Inter_700Bold" }]}>
-            ✓ {successData.points.toLocaleString("fr-FR")} pts ajoutés à{"\n"}
-            {successData.name} !
+            {isRedeemed
+              ? `🎁 Récompense appliquée !\n${successData.name} repart à 0 pts`
+              : `✓ +${successData.points.toLocaleString("fr-FR")} pts\n${successData.name}`}
           </Text>
+          {isRedeemed && (
+            <Text
+              style={{
+                color: "rgba(255,255,255,0.8)",
+                fontFamily: "Inter_400Regular",
+                fontSize: fs(14),
+                textAlign: "center",
+                marginTop: 8,
+              }}
+            >
+              -{successData.points} pts déduits
+            </Text>
+          )}
         </View>
       </View>
     );
   }
 
-  // ── QUICK POINTS ─────────────────────────────────────────────
+  // ── QUICK POINTS ──
   if (step === "quickPoints" && scannedCustomer) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -351,7 +628,7 @@ export default function MerchantScanScreen() {
           ]}
         >
           <TouchableOpacity onPress={handleReset} style={styles.backBtn}>
-            <Feather name="arrow-left" size={22} color={colors.foreground} />
+            <Feather name="arrow-left" size={iconSize(22)} color={colors.foreground} />
           </TouchableOpacity>
           <Text
             style={[
@@ -362,6 +639,8 @@ export default function MerchantScanScreen() {
             {isRTL ? "تأكيد النقاط" : "Créditer des points"}
           </Text>
         </View>
+
+        {/* ✅ Banner client avec points et cap */}
         <View
           style={[
             styles.customerBanner,
@@ -411,18 +690,54 @@ export default function MerchantScanScreen() {
                 },
               ]}
             >
-              {customerPoints} {isRTL ? "نقطة عندك" : "pts chez vous"}
+              {customerPoints} / {maxRewardPoints} pts
             </Text>
+            {/* ✅ Barre de progression vers le plafond */}
+            <View style={[styles.capTrack, { backgroundColor: colors.border }]}>
+              <View
+                style={[
+                  styles.capFill,
+                  {
+                    width:
+                      `${Math.min(100, (customerPoints / maxRewardPoints) * 100)}%` as any,
+                    backgroundColor: isAtMax ? "#E74C3C" : merchantAccentColor,
+                  },
+                ]}
+              />
+            </View>
+            {isAtMax && (
+              <Text
+                style={{
+                  color: "#E74C3C",
+                  fontSize: fs(11),
+                  fontFamily: "Inter_600SemiBold",
+                  marginTop: 2,
+                }}
+              >
+                {isRTL
+                  ? "⚠️ وصل إلى الحد الأقصى — يجب استخدام مكافأة أولاً"
+                  : "⚠️ Plafond atteint — doit utiliser une récompense"}
+              </Text>
+            )}
           </View>
           <View
             style={[
               styles.checkBadge,
-              { backgroundColor: merchantAccentColor + "18" },
+              {
+                backgroundColor: isAtMax
+                  ? "#E74C3C18"
+                  : merchantAccentColor + "18",
+              },
             ]}
           >
-            <Feather name="check" size={16} color={merchantAccentColor} />
+            <Feather
+              name={isAtMax ? "alert-circle" : "check"}
+              size={16}
+              color={isAtMax ? "#E74C3C" : merchantAccentColor}
+            />
           </View>
         </View>
+
         <KeyboardAwareScrollView
           contentContainerStyle={{ paddingBottom: 40 }}
           showsVerticalScrollIndicator={false}
@@ -440,65 +755,89 @@ export default function MerchantScanScreen() {
             {isRTL ? "نقاط سريعة" : "Points rapides"}
           </Text>
           <View style={styles.presetsGrid}>
-            {quickPoints.map((pts) => (
-              <TouchableOpacity
-                key={pts}
-                onPress={() => handleQuickPointsValidate(pts)}
-                activeOpacity={0.75}
-                disabled={loadingPreset !== null}
-                style={[
-                  styles.presetCard,
-                  {
-                    backgroundColor:
-                      loadingPreset === pts ? merchantAccentColor : colors.card,
-                    borderColor: merchantAccentColor,
-                    borderRadius: colors.radius,
-                  },
-                ]}
-              >
-                {loadingPreset === pts ? (
-                  <Text
-                    style={[
-                      styles.presetLoading,
-                      { fontFamily: "Inter_600SemiBold" },
-                    ]}
-                  >
-                    ...
-                  </Text>
-                ) : (
-                  <>
+            {quickPoints.map((pts) => {
+              const wouldExceed = customerPoints + pts > maxRewardPoints;
+              const isDisabled = isAtMax || loadingPreset !== null;
+              return (
+                <TouchableOpacity
+                  key={pts}
+                  onPress={() => handleQuickPointsValidate(pts)}
+                  activeOpacity={isDisabled ? 1 : 0.75}
+                  disabled={isDisabled}
+                  style={[
+                    styles.presetCard,
+                    {
+                      backgroundColor:
+                        loadingPreset === pts
+                          ? merchantAccentColor
+                          : isAtMax
+                            ? colors.muted
+                            : colors.card,
+                      borderColor: isAtMax
+                        ? colors.border
+                        : wouldExceed
+                          ? "#E67E22"
+                          : merchantAccentColor,
+                      borderRadius: colors.radius,
+                      opacity: isAtMax ? 0.5 : 1,
+                    },
+                  ]}
+                >
+                  {loadingPreset === pts ? (
                     <Text
                       style={[
-                        styles.presetPts,
-                        {
-                          color:
-                            loadingPreset === null
-                              ? merchantAccentColor
-                              : colors.mutedForeground,
-                          fontFamily: "Inter_700Bold",
-                        },
+                        styles.presetLoading,
+                        { fontFamily: "Inter_600SemiBold" },
                       ]}
                     >
-                      +{pts}
+                      ...
                     </Text>
-                    <Text
-                      style={[
-                        styles.presetPtsLabel,
-                        {
-                          color:
-                            loadingPreset === null
-                              ? merchantAccentColor
-                              : colors.mutedForeground,
-                          fontFamily: "Inter_400Regular",
-                        },
-                      ]}
-                    >
-                      pts
-                    </Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            ))}
+                  ) : (
+                    <>
+                      <Text
+                        style={[
+                          styles.presetPts,
+                          {
+                            color: isAtMax
+                              ? colors.mutedForeground
+                              : wouldExceed
+                                ? "#E67E22"
+                                : merchantAccentColor,
+                            fontFamily: "Inter_700Bold",
+                          },
+                        ]}
+                      >
+                        +{Math.min(pts, remainingToMax)}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.presetPtsLabel,
+                          {
+                            color: isAtMax
+                              ? colors.mutedForeground
+                              : merchantAccentColor,
+                            fontFamily: "Inter_400Regular",
+                          },
+                        ]}
+                      >
+                        pts
+                      </Text>
+                      {wouldExceed && !isAtMax && (
+                        <Text
+                          style={{
+                            color: "#E67E22",
+                            fontSize: fs(9),
+                            fontFamily: "Inter_600SemiBold",
+                          }}
+                        >
+                          cap
+                        </Text>
+                      )}
+                    </>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
           </View>
           <View style={styles.dividerRow}>
             <View
@@ -520,17 +859,28 @@ export default function MerchantScanScreen() {
             />
           </View>
           <TouchableOpacity
-            onPress={() => setStep("amount")}
+            onPress={() => !isAtMax && setStep("amount")}
             style={[
               styles.amountBtn,
-              { borderColor: merchantAccentColor, borderRadius: colors.radius },
+              {
+                borderColor: isAtMax ? colors.border : merchantAccentColor,
+                borderRadius: colors.radius,
+                opacity: isAtMax ? 0.5 : 1,
+              },
             ]}
           >
-            <Feather name="dollar-sign" size={18} color={merchantAccentColor} />
+            <Feather
+              name="dollar-sign"
+              size={18}
+              color={isAtMax ? colors.mutedForeground : merchantAccentColor}
+            />
             <Text
               style={[
                 styles.amountBtnText,
-                { color: merchantAccentColor, fontFamily: "Inter_600SemiBold" },
+                {
+                  color: isAtMax ? colors.mutedForeground : merchantAccentColor,
+                  fontFamily: "Inter_600SemiBold",
+                },
               ]}
             >
               {isRTL ? "إدخال مبلغ الشراء" : "Saisir montant d'achat"}
@@ -538,7 +888,7 @@ export default function MerchantScanScreen() {
             <Feather
               name={isRTL ? "chevron-left" : "chevron-right"}
               size={16}
-              color={merchantAccentColor}
+              color={isAtMax ? colors.mutedForeground : merchantAccentColor}
             />
           </TouchableOpacity>
           <TouchableOpacity onPress={handleReset} style={styles.cancelBtn}>
@@ -559,9 +909,10 @@ export default function MerchantScanScreen() {
     );
   }
 
-  // ── AMOUNT ───────────────────────────────────────────────────
+  // ── AMOUNT ──
   if (step === "amount" && scannedCustomer) {
-    const isValid = amountNum > 0;
+    const effectivePoints = Math.min(points, remainingToMax);
+    const isValid = amountNum > 0 && !isAtMax;
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <StatusBar translucent backgroundColor="transparent" />
@@ -575,7 +926,7 @@ export default function MerchantScanScreen() {
             onPress={() => setStep("quickPoints")}
             style={styles.backBtn}
           >
-            <Feather name="arrow-left" size={22} color={colors.foreground} />
+            <Feather name="arrow-left" size={iconSize(22)} color={colors.foreground} />
           </TouchableOpacity>
           <Text
             style={[
@@ -586,8 +937,6 @@ export default function MerchantScanScreen() {
             {t("scan.enterAmount")}
           </Text>
         </View>
-
-        {/* ✅ Scroll sans bouton */}
         <KeyboardAwareScrollView
           contentContainerStyle={{ paddingBottom: 100 }}
           keyboardShouldPersistTaps="handled"
@@ -625,7 +974,8 @@ export default function MerchantScanScreen() {
                   { color: "#F9A602", fontFamily: "Inter_400Regular" },
                 ]}
               >
-                {customerPoints} pts chez votre commerce
+                {customerPoints} / {maxRewardPoints} pts — {remainingToMax}{" "}
+                restants
               </Text>
             </View>
           </View>
@@ -763,6 +1113,27 @@ export default function MerchantScanScreen() {
               { backgroundColor: colors.card, borderRadius: colors.radius },
             ]}
           >
+            <View style={[styles.summaryRow, { flexDirection: rowDir }]}>
+              <Text
+                style={[
+                  styles.summaryKey,
+                  {
+                    color: colors.mutedForeground,
+                    fontFamily: "Inter_400Regular",
+                  },
+                ]}
+              >
+                {isRTL ? "المبلغ الفعلي" : "Montant réel"}
+              </Text>
+              <Text
+                style={[
+                  styles.summaryVal,
+                  { color: colors.foreground, fontFamily: "Inter_600SemiBold" },
+                ]}
+              >
+                {effectiveAmount.toLocaleString("fr-FR")} DH
+              </Text>
+            </View>
             <View
               style={[
                 styles.summaryDivider,
@@ -787,20 +1158,19 @@ export default function MerchantScanScreen() {
                   { color: "#F9A602", fontFamily: "Inter_700Bold" },
                 ]}
               >
-                {points.toLocaleString("fr-FR")} pts ⭐
+                {effectivePoints.toLocaleString("fr-FR")} pts ⭐
+                {effectivePoints < points && ` (plafonné)`}
               </Text>
             </View>
           </View>
         </KeyboardAwareScrollView>
-
-        {/* ✅ Bouton FIXE en bas — jamais caché */}
         <View
           style={[
             styles.fixedBottom,
             {
               backgroundColor: colors.background,
               borderTopColor: colors.border,
-              paddingBottom: insets.bottom + 70,
+              paddingBottom: insets.bottom + 8,
             },
           ]}
         >
@@ -819,7 +1189,7 @@ export default function MerchantScanScreen() {
             >
               {loading
                 ? t("common.loading")
-                : `${t("scan.validate")} — +${points.toLocaleString("fr-FR")} pts`}
+                : `${t("scan.validate")} — +${Math.min(points, remainingToMax).toLocaleString("fr-FR")} pts`}
             </Text>
           </TouchableOpacity>
         </View>
@@ -827,7 +1197,7 @@ export default function MerchantScanScreen() {
     );
   }
 
-  // ── SCANNER ──────────────────────────────────────────────────
+  // ── SCANNER ──
   return (
     <View style={[styles.container, { backgroundColor: "#000" }]}>
       <StatusBar translucent backgroundColor="transparent" />
@@ -892,7 +1262,7 @@ export default function MerchantScanScreen() {
             { paddingTop: topPad + 20, backgroundColor: colors.background },
           ]}
         >
-          <Feather name="camera-off" size={48} color={colors.mutedForeground} />
+          <Feather name="camera-off" size={iconSize(48)} color={colors.mutedForeground} />
           <Text
             style={[
               styles.webHint,
@@ -905,11 +1275,15 @@ export default function MerchantScanScreen() {
         </View>
       ) : (
         <View style={StyleSheet.absoluteFillObject}>
-          <CameraView
-            style={StyleSheet.absoluteFillObject}
-            barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-            onBarcodeScanned={activelyScanning ? handleBarcodeScan : undefined}
-          />
+          {isFocused && (
+            <CameraView
+              style={StyleSheet.absoluteFillObject}
+              barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+              onBarcodeScanned={
+                activelyScanning ? handleBarcodeScan : undefined
+              }
+            />
+          )}
           <View
             style={[styles.cameraTopBar, { paddingTop: topPad + 8 }]}
             pointerEvents="none"
@@ -937,9 +1311,9 @@ export default function MerchantScanScreen() {
   );
 }
 
-const CORNER_SIZE = 28;
-const CORNER_WIDTH = 3;
-const FRAME_SIZE = 220;
+const CORNER_SIZE = 28,
+  CORNER_WIDTH = 3,
+  FRAME_SIZE = 220;
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -950,7 +1324,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   backBtn: { padding: 4 },
-  title: { fontSize: 22, flex: 1 },
+  title: { fontSize: fs(22), flex: 1 },
   content: { padding: 20, gap: 16 },
   centeredWrap: {
     flex: 1,
@@ -961,7 +1335,7 @@ const styles = StyleSheet.create({
   },
   webFallback: { flex: 1 },
   webIconWrap: { alignItems: "center", gap: 12 },
-  webHint: { fontSize: 14, textAlign: "center", lineHeight: 21 },
+  webHint: { fontSize: fs(14), textAlign: "center", lineHeight: 21 },
   customerBanner: {
     paddingHorizontal: 20,
     paddingVertical: 14,
@@ -976,9 +1350,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  custInitial: { fontSize: 18 },
-  custName: { fontSize: 16 },
-  custPoints: { fontSize: 13, marginTop: 2 },
+  custInitial: { fontSize: fs(18) },
+  custName: { fontSize: fs(16) },
+  custPoints: { fontSize: fs(13), marginTop: 2 },
+  capTrack: {
+    height: 4,
+    borderRadius: 99,
+    overflow: "hidden",
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  capFill: { height: 4, borderRadius: 99 },
   checkBadge: {
     width: 32,
     height: 32,
@@ -987,7 +1369,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   sectionLabel: {
-    fontSize: 13,
+    fontSize: fs(13),
     paddingHorizontal: 20,
     marginTop: 20,
     marginBottom: 12,
@@ -1007,9 +1389,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 2,
   },
-  presetPts: { fontSize: 26 },
-  presetPtsLabel: { fontSize: 12 },
-  presetLoading: { color: "#fff", fontSize: 18 },
+  presetPts: { fontSize: fs(26) },
+  presetPtsLabel: { fontSize: fs(12) },
+  presetLoading: { color: "#fff", fontSize: fs(18) },
   dividerRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1018,7 +1400,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   dividerLine: { flex: 1, height: 1 },
-  dividerText: { fontSize: 13 },
+  dividerText: { fontSize: fs(13) },
   amountBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -1028,9 +1410,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderWidth: 1.5,
   },
-  amountBtnText: { fontSize: 15, flex: 1, textAlign: "center" },
+  amountBtnText: { fontSize: fs(15), flex: 1, textAlign: "center" },
   cancelBtn: { alignItems: "center", paddingVertical: 16 },
-  cancelText: { fontSize: 14 },
+  cancelText: { fontSize: fs(14) },
   amountCustomerRow: {
     alignItems: "center",
     gap: 12,
@@ -1045,9 +1427,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  miniInitial: { fontSize: 15 },
-  miniName: { fontSize: 15 },
-  miniPoints: { fontSize: 12, marginTop: 1 },
+  miniInitial: { fontSize: fs(15) },
+  miniName: { fontSize: fs(15) },
+  miniPoints: { fontSize: fs(12), marginTop: 1 },
   amountBox: {
     marginHorizontal: 20,
     borderWidth: 2,
@@ -1057,7 +1439,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 16,
   },
-  amountValue: { fontSize: 48, textAlign: "center", letterSpacing: -1 },
+  amountValue: { fontSize: fs(48), textAlign: "center", letterSpacing: -1 },
   keypad: { paddingHorizontal: 20, gap: 8, marginBottom: 16 },
   keypadRow: { flexDirection: "row", gap: 8 },
   keypadBtn: {
@@ -1067,7 +1449,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  keypadLabel: { fontSize: 24 },
+  keypadLabel: { fontSize: fs(24) },
   quickRow: { paddingHorizontal: 20, gap: 8, marginBottom: 16 },
   quickPill: {
     flex: 1,
@@ -1076,9 +1458,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     alignItems: "center",
   },
-  quickLabel: { fontSize: 13 },
+  quickLabel: { fontSize: fs(13) },
   multSection: { paddingHorizontal: 20, marginBottom: 16, gap: 8 },
-  multLabel: { fontSize: 13 },
+  multLabel: { fontSize: fs(13) },
   multRow: { gap: 6, flexWrap: "wrap" },
   multPill: {
     borderWidth: 1.5,
@@ -1088,7 +1470,7 @@ const styles = StyleSheet.create({
     minWidth: 44,
     alignItems: "center",
   },
-  multPillLabel: { fontSize: 13 },
+  multPillLabel: { fontSize: fs(13) },
   summary: { marginHorizontal: 20, padding: 16, marginBottom: 4 },
   summaryRow: {
     justifyContent: "space-between",
@@ -1096,12 +1478,11 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   summaryDivider: { height: 1 },
-  summaryKey: { fontSize: 14 },
-  summaryVal: { fontSize: 16 },
-  // ✅ Bouton fixe en bas
+  summaryKey: { fontSize: fs(14) },
+  summaryVal: { fontSize: fs(16) },
   fixedBottom: { paddingHorizontal: 20, paddingTop: 12, borderTopWidth: 1 },
   validateBtn: { borderRadius: 99, paddingVertical: 18, alignItems: "center" },
-  validateLabel: { color: "#fff", fontSize: 17 },
+  validateLabel: { color: "#fff", fontSize: fs(17) },
   successCircle: {
     width: 120,
     height: 120,
@@ -1113,7 +1494,7 @@ const styles = StyleSheet.create({
   },
   successTitle: {
     color: "#fff",
-    fontSize: 22,
+    fontSize: fs(22),
     textAlign: "center",
     lineHeight: 32,
   },
@@ -1126,7 +1507,7 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     backgroundColor: "rgba(0,0,0,0.4)",
   },
-  cameraTitle: { color: "white", fontSize: 18, textAlign: "center" },
+  cameraTitle: { color: "white", fontSize: fs(18), textAlign: "center" },
   scanOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
@@ -1170,7 +1551,7 @@ const styles = StyleSheet.create({
   },
   scanHint: {
     color: "rgba(255,255,255,0.85)",
-    fontSize: 14,
+    fontSize: fs(14),
     textAlign: "center",
     paddingHorizontal: 40,
     lineHeight: 21,

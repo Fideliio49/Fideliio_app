@@ -9,19 +9,27 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
-import { Button, InputAccessoryView, Keyboard, Platform, View } from "react-native";
+import {
+  Button,
+  InputAccessoryView,
+  Keyboard,
+  Platform,
+  View,
+} from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { KEYBOARD_TOOLBAR_ID } from "@/constants/keyboard";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import "../i18n";
-
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppProvider } from "@/context/AppContext";
 import { DataProvider } from "@/context/DataContext";
+import { GlobalToast } from "@/components/GlobalToast";
+
+// ✅ Fix Android : charger explicitement la font des icônes Feather
+import { Feather } from "@expo/vector-icons";
 
 SplashScreen.preventAutoHideAsync();
-
 const queryClient = new QueryClient();
 
 function RootLayoutNav() {
@@ -36,9 +44,11 @@ function RootLayoutNav() {
         <Stack.Screen name="auth/register" />
         <Stack.Screen name="auth/forgot" />
         <Stack.Screen name="auth/role" />
+        <Stack.Screen name="auth/merchant-setup" />
         <Stack.Screen name="(customer)" />
         <Stack.Screen name="(merchant)" />
       </Stack>
+      <GlobalToast />
       {Platform.OS === "ios" && (
         <InputAccessoryView nativeID={KEYBOARD_TOOLBAR_ID}>
           <View
@@ -65,31 +75,33 @@ export default function RootLayout() {
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
+    // ✅ Charge la font Feather explicitement — évite les carrés sur Android.
+    // Sur iOS, expo-vector-icons la charge automatiquement via le bundle natif,
+    // mais Android en a besoin dans useFonts pour garantir le rendu correct.
+    ...Feather.font,
   });
 
   useEffect(() => {
-    if (fontsLoaded || fontError) {
-      SplashScreen.hideAsync();
-    }
+    if (fontsLoaded || fontError) SplashScreen.hideAsync();
   }, [fontsLoaded, fontError]);
 
   if (!fontsLoaded && !fontError) return null;
 
   return (
     <SafeAreaProvider>
-      <ErrorBoundary>
-        <QueryClientProvider client={queryClient}>
-          <GestureHandlerRootView style={{ flex: 1 }}>
-            <KeyboardProvider>
-              <AppProvider>
-                <DataProvider>
+      <QueryClientProvider client={queryClient}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <KeyboardProvider>
+            <AppProvider>
+              <DataProvider>
+                <ErrorBoundary>
                   <RootLayoutNav />
-                </DataProvider>
-              </AppProvider>
-            </KeyboardProvider>
-          </GestureHandlerRootView>
-        </QueryClientProvider>
-      </ErrorBoundary>
+                </ErrorBoundary>
+              </DataProvider>
+            </AppProvider>
+          </KeyboardProvider>
+        </GestureHandlerRootView>
+      </QueryClientProvider>
     </SafeAreaProvider>
   );
 }

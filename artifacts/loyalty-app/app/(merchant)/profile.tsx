@@ -12,6 +12,7 @@ import {
   Modal,
   TextInput,
 } from "react-native";
+import { fs, iconSize } from "@/utils/responsive";
 import QRCode from "react-native-qrcode-svg";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useTranslation } from "react-i18next";
@@ -67,7 +68,7 @@ function SettingsRow({
       style={[styles.settingsRow, { flexDirection: rowDir }]}
     >
       <View style={[styles.rowIcon, { backgroundColor: iconColor + "18" }]}>
-        <Feather name={icon} size={18} color={iconColor} />
+        <Feather name={icon} size={iconSize(18)} color={iconColor} />
       </View>
       <Text
         style={[
@@ -166,7 +167,7 @@ function BottomModal({ visible, onClose, title, children, colors }: any) {
               {title}
             </Text>
             <TouchableOpacity onPress={onClose}>
-              <Feather name="x" size={22} color={colors.mutedForeground} />
+              <Feather name="x" size={iconSize(22)} color={colors.mutedForeground} />
             </TouchableOpacity>
           </View>
           {children}
@@ -699,8 +700,9 @@ export default function MerchantProfileScreen() {
               leftIcon="briefcase"
             />
             <Text
+              allowFontScaling={false}
               style={{
-                fontSize: 13,
+                fontSize: fs(13),
                 color: colors.mutedForeground,
                 fontFamily: "Inter_500Medium",
               }}
@@ -726,8 +728,9 @@ export default function MerchantProfileScreen() {
                   ]}
                 >
                   <Text
+                    allowFontScaling={false}
                     style={{
-                      fontSize: 12,
+                      fontSize: fs(12),
                       color:
                         category === key
                           ? merchantAccentColor
@@ -767,10 +770,11 @@ export default function MerchantProfileScreen() {
         >
           <View style={{ padding: 20, gap: 16 }}>
             <Text
+              allowFontScaling={false}
               style={{
                 color: colors.mutedForeground,
                 fontFamily: "Inter_400Regular",
-                fontSize: 13,
+                fontSize: fs(13),
                 textAlign,
               }}
             >
@@ -787,10 +791,11 @@ export default function MerchantProfileScreen() {
               leftIcon="zap"
             />
             <Text
+              allowFontScaling={false}
               style={{
                 color: colors.mutedForeground,
                 fontFamily: "Inter_400Regular",
-                fontSize: 12,
+                fontSize: fs(12),
               }}
             >
               {isRTL
@@ -821,10 +826,11 @@ export default function MerchantProfileScreen() {
         >
           <View style={{ padding: 20, gap: 16 }}>
             <Text
+              allowFontScaling={false}
               style={{
                 color: colors.mutedForeground,
                 fontFamily: "Inter_400Regular",
-                fontSize: 13,
+                fontSize: fs(13),
                 textAlign,
               }}
             >
@@ -848,19 +854,21 @@ export default function MerchantProfileScreen() {
                     ]}
                   >
                     <Text
+                      allowFontScaling={false}
                       style={{
                         color: merchantAccentColor,
                         fontFamily: "Inter_700Bold",
-                        fontSize: 14,
+                        fontSize: fs(14),
                       }}
                     >
                       +{n}
                     </Text>
                     <Text
+                      allowFontScaling={false}
                       style={{
                         color: merchantAccentColor,
                         fontFamily: "Inter_400Regular",
-                        fontSize: 11,
+                        fontSize: fs(11),
                       }}
                     >
                       pts
@@ -886,10 +894,11 @@ export default function MerchantProfileScreen() {
               placeholderTextColor={colors.mutedForeground}
             />
             <Text
+              allowFontScaling={false}
               style={{
                 color: colors.mutedForeground,
                 fontFamily: "Inter_400Regular",
-                fontSize: 11,
+                fontSize: fs(11),
               }}
             >
               {isRTL
@@ -932,8 +941,9 @@ export default function MerchantProfileScreen() {
                 },
               ]}
             >
-              <Text style={{ fontSize: 24 }}>{l.flag}</Text>
+              <Text allowFontScaling={false} style={{ fontSize: fs(24) }}>{l.flag}</Text>
               <Text
+                allowFontScaling={false}
                 style={{
                   flex: 1,
                   color: colors.foreground,
@@ -941,13 +951,13 @@ export default function MerchantProfileScreen() {
                     language === l.code
                       ? "Inter_600SemiBold"
                       : "Inter_400Regular",
-                  fontSize: 16,
+                  fontSize: fs(16),
                 }}
               >
                 {l.label}
               </Text>
               {language === l.code && (
-                <Feather name="check" size={20} color={merchantAccentColor} />
+                <Feather name="check" size={iconSize(20)} color={merchantAccentColor} />
               )}
             </TouchableOpacity>
           ))}
@@ -988,7 +998,7 @@ export default function MerchantProfileScreen() {
                   ]}
                 >
                   {isSelected && (
-                    <Feather name="check" size={24} color="white" />
+                    <Feather name="check" size={iconSize(24)} color="white" />
                   )}
                 </TouchableOpacity>
               );
@@ -1032,15 +1042,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 8,
   },
-  avatarText: { fontSize: 28 },
-  heroName: { fontSize: 20 },
-  heroBiz: { fontSize: 14 },
-  heroEmail: { fontSize: 13, marginTop: 2 },
+  avatarText: { fontSize: fs(28) },
+  heroName: { fontSize: fs(20) },
+  heroBiz: { fontSize: fs(14) },
+  heroEmail: { fontSize: fs(13), marginTop: 2 },
   qrWrap: { alignItems: "center", marginTop: 16, gap: 8 },
-  qrCode: { fontSize: 11, letterSpacing: 1 },
+  qrCode: { fontSize: fs(11), letterSpacing: 1 },
   sectionWrap: { marginTop: 24, paddingHorizontal: 16 },
   sectionHeader: {
-    fontSize: 12,
+    fontSize: fs(12),
     textTransform: "uppercase",
     letterSpacing: 0.8,
     marginBottom: 6,
@@ -1061,8 +1071,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   // APRÈS
-  rowLabel: { fontSize: 15, color: "#000" }, // overridé par colors.foreground inline
-  rowValue: { fontSize: 13, color: "#666" }, // overridé par colors.mutedForeground inline
+  rowLabel: { fontSize: fs(15), color: "#000" },
+  rowValue: { fontSize: fs(13), color: "#666" },
   separator: { height: 1, marginLeft: 64 },
   catChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
   modalOverlay: {
@@ -1091,7 +1101,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
   },
-  modalTitle: { fontSize: 18 },
+  modalTitle: { fontSize: fs(18) },
   langOption: {
     flexDirection: "row",
     alignItems: "center",
@@ -1110,7 +1120,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderRadius: 12,
     padding: 14,
-    fontSize: 16,
+    fontSize: fs(16),
     letterSpacing: 1,
   },
   swatchGrid: {
@@ -1141,5 +1151,5 @@ const styles = StyleSheet.create({
     elevation: 8,
     zIndex: 1000,
   },
-  toastText: { color: "white", fontSize: 14, textAlign: "center" },
+  toastText: { color: "white", fontSize: fs(14), textAlign: "center" },
 });

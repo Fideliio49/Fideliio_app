@@ -8,18 +8,21 @@ import {
   Platform,
   useWindowDimensions,
   StatusBar,
-  Alert,
   Animated,
 } from "react-native";
+import { fs, iconSize } from "@/utils/responsive";
 import { useRouter, useFocusEffect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import Svg, { Path } from "react-native-svg";
+import { useTranslation } from "react-i18next";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { TransactionRow } from "@/components/TransactionRow";
 import { Card } from "@/components/ui/Card";
 import { supabase } from "@/lib/supabase";
+import { RewardQRModal } from "@/components/RewardQRModal";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const CATEGORY_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
   restaurant: "coffee",
@@ -60,7 +63,6 @@ function ZelligeOverlay({ width, height }: { width: number; height: number }) {
   );
 }
 
-// ── Toast in-app ────────────────────────────────────────────
 function PointsToast({
   message,
   visible,
@@ -72,7 +74,6 @@ function PointsToast({
 }) {
   const translateY = useRef(new Animated.Value(-100)).current;
   const opacity = useRef(new Animated.Value(0)).current;
-
   useEffect(() => {
     if (visible) {
       Animated.parallel([
@@ -103,22 +104,17 @@ function PointsToast({
       ]).start();
     }
   }, [visible]);
-
   return (
     <Animated.View
       style={[
         styles.toast,
-        {
-          backgroundColor: accentColor,
-          transform: [{ translateY }],
-          opacity,
-        },
+        { backgroundColor: accentColor, transform: [{ translateY }], opacity },
       ]}
       pointerEvents="none"
     >
       <View style={styles.toastInner}>
         <View style={styles.toastIconWrap}>
-          <Feather name="zap" size={20} color="#fff" />
+          <Feather name="zap" size={iconSize(20)} color="#fff" />
         </View>
         <Text style={[styles.toastText, { fontFamily: "Inter_700Bold" }]}>
           {message}
@@ -130,7 +126,8 @@ function PointsToast({
 
 export default function CustomerHomeScreen() {
   const colors = useColors();
-  const { user, accentColor, colorTheme } = useApp();
+  const { user, accentColor, colorTheme, language } = useApp();
+  const { t } = useTranslation();
   const isDark = colorTheme === "dark";
   const router = useRouter();
   const { width } = useWindowDimensions();
@@ -142,8 +139,10 @@ export default function CustomerHomeScreen() {
   const [progressItems, setProgressItems] = useState<any[]>([]);
   const [nextTarget, setNextTarget] = useState(200);
   const [merchantPoints, setMerchantPoints] = useState<any[]>([]);
-
-  // ── Toast state ──
+  const [showQRModal, setShowQRModal] = useState(false);
+  const [favRewardIds, setFavRewardIds] = useState<string[]>([]);
+  const [favRewards, setFavRewards] = useState<any[]>([]);
+  const [selectedReward, setSelectedReward] = useState<any>(null);
   const [toastMsg, setToastMsg] = useState("");
   const [toastVisible, setToastVisible] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -154,6 +153,63 @@ export default function CustomerHomeScreen() {
   const heroPatternHeight = topPad + 240;
   const progress = Math.min(1, totalPoints / Math.max(1, nextTarget));
 
+  // ✅ Textes traduits
+  const labelHello =
+    language === "ar" ? "مرحباً،" : language === "en" ? "Hello," : "Bonjour,";
+  const labelPoints = t("common.points").toLowerCase();
+  const labelNextReward =
+    language === "ar"
+      ? "المكافأة التالية في"
+      : language === "en"
+        ? "Next reward in"
+        : "Prochaine récompense dans";
+  const labelAlmostThere =
+    language === "ar"
+      ? "تقريباً!"
+      : language === "en"
+        ? "Almost there!"
+        : "Presque là !";
+  const labelSeeAll =
+    language === "ar"
+      ? "عرض الكل"
+      : language === "en"
+        ? "See all"
+        : "Voir tous";
+  const labelAvailableRewards =
+    language === "ar"
+      ? "المكافآت المتاحة"
+      : language === "en"
+        ? "Available rewards"
+        : "Récompenses disponibles";
+  const labelRecentActivity =
+    language === "ar"
+      ? "النشاط الأخير"
+      : language === "en"
+        ? "Recent activity"
+        : "Activité récente";
+  const labelNoTransactions =
+    language === "ar"
+      ? "لا توجد معاملات"
+      : language === "en"
+        ? "No transactions yet"
+        : "Aucune transaction pour le moment";
+  const labelUse =
+    language === "ar" ? "استخدام" : language === "en" ? "Use" : "Utiliser";
+  const labelReward =
+    language === "ar"
+      ? "مكافأة:"
+      : language === "en"
+        ? "Reward:"
+        : "Récompense :";
+  const labelRemaining =
+    language === "ar" ? "متبقية" : language === "en" ? "remaining" : "restants";
+  const labelAlmostBadge =
+    language === "ar"
+      ? "🔥 تقريباً!"
+      : language === "en"
+        ? "🔥 Almost!"
+        : "🔥 Presque !";
+
   function showToast(msg: string) {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     setToastMsg(msg);
@@ -161,37 +217,37 @@ export default function CustomerHomeScreen() {
     toastTimer.current = setTimeout(() => setToastVisible(false), 3500);
   }
 
-  // ── Supabase Realtime — écoute les nouvelles transactions ──
-  // ✅ APRÈS — se lance quand customer est chargé dans le state
   useEffect(() => {
-    if (!customer?.id) return;
-
+    if (!customerRef.current?.id) return;
     const channel = supabase
-      .channel(`customer-transactions-${customer.id}`)
+      .channel(`customer-tx-home-${customerRef.current.id}-${Date.now()}`)
       .on(
         "postgres_changes",
         {
           event: "INSERT",
           schema: "public",
           table: "transactions",
-          filter: `customer_id=eq.${customer.id}`,
+          filter: `customer_id=eq.${customerRef.current.id}`,
         },
         (payload) => {
           const tx = payload.new as any;
           if (tx.points_earned > 0) {
-            showToast(
-              `+${tx.points_earned} points gagnés chez ${tx.merchant_name} ! 🎉`,
-            );
+            const msg =
+              language === "ar"
+                ? `+${tx.points_earned} نقطة من ${tx.merchant_name} 🎉`
+                : language === "en"
+                  ? `+${tx.points_earned} points earned at ${tx.merchant_name}! 🎉`
+                  : `+${tx.points_earned} points gagnés chez ${tx.merchant_name} ! 🎉`;
+            showToast(msg);
             loadData();
           }
         },
       )
       .subscribe();
-
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [customer?.id]); // ✅ dépend du state, pas de la ref
+  }, [customerRef.current?.id, language]);
 
   useFocusEffect(
     useCallback(() => {
@@ -199,30 +255,40 @@ export default function CustomerHomeScreen() {
       if (Platform.OS === "android")
         StatusBar.setBackgroundColor("transparent", true);
       loadData();
+      loadFavorites();
     }, [user?.id]),
   );
 
+  async function loadFavorites() {
+    if (!user?.id) return;
+    try {
+      const key = `@fav_rewards_${user.id}`;
+      const raw = await AsyncStorage.getItem(key);
+      const ids: string[] = raw ? JSON.parse(raw) : [];
+      setFavRewardIds(ids);
+      return ids;
+    } catch {
+      return [];
+    }
+  }
+
   async function loadData() {
     if (!user?.id) return;
-
     const { data: customerData } = await supabase
       .from("customers")
       .select("*")
       .eq("user_id", user.id)
       .maybeSingle();
-
     if (!customerData) return;
     setCustomer(customerData);
-    customerRef.current = customerData; // ✅ garde la ref pour Realtime
+    customerRef.current = customerData;
 
     const { data: pointsData } = await supabase
       .from("customer_total_points")
       .select("total_points")
       .eq("customer_id", customerData.id)
       .maybeSingle();
-
-    const pts = pointsData?.total_points ?? 0;
-    setTotalPoints(pts);
+    setTotalPoints(pointsData?.total_points ?? 0);
 
     const { data: txData } = await supabase
       .from("transactions")
@@ -231,7 +297,6 @@ export default function CustomerHomeScreen() {
       .gt("points_earned", 0)
       .order("created_at", { ascending: false })
       .limit(5);
-
     setTransactions(txData ?? []);
 
     const { data: progressData } = await supabase
@@ -241,14 +306,12 @@ export default function CustomerHomeScreen() {
       .gte("progress_percent", 80)
       .order("progress_percent", { ascending: false })
       .limit(3);
-
     setProgressItems(progressData ?? []);
 
     const { data: mpData } = await supabase
       .from("customer_merchant_points")
       .select("merchant_id, total_points")
       .eq("customer_id", customerData.id);
-
     setMerchantPoints(mpData ?? []);
 
     if (mpData && mpData.length > 0) {
@@ -258,92 +321,43 @@ export default function CustomerHomeScreen() {
         .select("*")
         .in("merchant_id", merchantIds)
         .eq("is_active", true);
-
       const redeemable = (rewards ?? []).filter((r: any) => {
         const mp = mpData.find((m: any) => m.merchant_id === r.merchant_id);
         return mp && mp.total_points >= r.points_required;
       });
       setRedeemableRewards(redeemable);
 
+      // ✅ Construire la liste des favoris (par ids)
+      const key = `@fav_rewards_${user?.id}`;
+      const raw = await AsyncStorage.getItem(key);
+      const ids: string[] = raw ? JSON.parse(raw) : [];
+      setFavRewardIds(ids);
+      const favs = (rewards ?? [])
+        .filter((r: any) => ids.includes(r.id))
+        .map((r: any) => {
+          const mp = mpData.find((m: any) => m.merchant_id === r.merchant_id);
+          return {
+            ...r,
+            customer_points: mp?.total_points ?? 0,
+            merchant_name: r.merchant_name ?? mp?.business_name,
+          };
+        });
+      setFavRewards(favs);
       const nonRedeemable = (rewards ?? []).filter((r: any) => {
         const mp = mpData.find((m: any) => m.merchant_id === r.merchant_id);
         return !mp || mp.total_points < r.points_required;
       });
-
       if (nonRedeemable.length > 0) {
-        const minThreshold = Math.min(
-          ...nonRedeemable.map((r: any) => r.points_required),
+        setNextTarget(
+          Math.min(...nonRedeemable.map((r: any) => r.points_required)),
         );
-        setNextTarget(minThreshold);
       }
     }
   }
 
-  async function handleRedeem(reward: any) {
-    if (!customer) return;
-
-    const mp = merchantPoints.find(
-      (m: any) => m.merchant_id === reward.merchant_id,
-    );
-    const solde = mp?.total_points ?? 0;
-
-    if (solde < reward.points_required) {
-      Alert.alert(
-        "Points insuffisants",
-        `Il vous faut ${reward.points_required} points.\nVous avez ${solde} pts chez ${reward.merchant_name}.`,
-      );
-      return;
-    }
-
-    Alert.alert(
-      "Utiliser cette récompense ?",
-      `${reward.name} chez ${reward.merchant_name}\n\nSolde après : ${solde - reward.points_required} pts`,
-      [
-        { text: "Annuler", style: "cancel" },
-        {
-          text: "Confirmer",
-          onPress: async () => {
-            try {
-              const { nanoid } = await import("nanoid/non-secure");
-              const { error: rdError } = await supabase
-                .from("redemptions")
-                .insert({
-                  id: nanoid(),
-                  customer_id: customer.id,
-                  reward_id: reward.id,
-                  merchant_id: reward.merchant_id,
-                  reward_name: reward.name,
-                  merchant_name: reward.merchant_name,
-                  redeemed_at: new Date().toISOString(),
-                });
-              if (rdError) throw rdError;
-
-              const { error: txError } = await supabase
-                .from("transactions")
-                .insert({
-                  id: nanoid(),
-                  customer_id: customer.id,
-                  merchant_id: reward.merchant_id,
-                  merchant_name: reward.merchant_name,
-                  customer_name: `${customer.first_name} ${customer.last_name}`,
-                  amount: 0,
-                  multiplier: 1,
-                  points_earned: -reward.points_required,
-                  created_at: new Date().toISOString(),
-                });
-              if (txError) throw txError;
-
-              await loadData();
-            } catch (err: any) {
-              Alert.alert(
-                "Erreur",
-                err.message || "Impossible d'utiliser cette récompense.",
-              );
-            }
-          },
-        },
-      ],
-    );
+  function openQRModal(reward: any) {
+    setSelectedReward(reward);
+    setShowQRModal(true);
   }
 
   return (
@@ -353,8 +367,6 @@ export default function CustomerHomeScreen() {
         backgroundColor="transparent"
         barStyle="light-content"
       />
-
-      {/* ✅ Toast in-app — affiché par-dessus tout */}
       <PointsToast
         message={toastMsg}
         visible={toastVisible}
@@ -374,7 +386,7 @@ export default function CustomerHomeScreen() {
         >
           <ZelligeOverlay width={width} height={heroPatternHeight} />
           <Text style={[styles.welcome, { fontFamily: "Inter_400Regular" }]}>
-            Bonjour, {customer?.first_name} 👋
+            {labelHello} {customer?.first_name} 👋
           </Text>
           <View style={styles.pointsRow}>
             <Text style={[styles.pointsValue, { fontFamily: "Inter_700Bold" }]}>
@@ -383,7 +395,7 @@ export default function CustomerHomeScreen() {
             <Text
               style={[styles.pointsLabel, { fontFamily: "Inter_400Regular" }]}
             >
-              points
+              {labelPoints}
             </Text>
           </View>
           <View style={styles.progressSection}>
@@ -393,7 +405,7 @@ export default function CustomerHomeScreen() {
                 { fontFamily: "Inter_400Regular" },
               ]}
             >
-              Prochaine récompense dans
+              {labelNextReward}
             </Text>
             <View style={styles.progressTrack}>
               <View
@@ -418,14 +430,14 @@ export default function CustomerHomeScreen() {
                 <View
                   style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
                 >
-                  <Feather name="map-pin" size={16} color={colors.foreground} />
+                  <Feather name="map-pin" size={iconSize(16)} color={colors.foreground} />
                   <Text
                     style={[
                       styles.sectionTitle,
                       { color: colors.foreground, fontFamily: "Inter_700Bold" },
                     ]}
                   >
-                    Presque là !
+                    {labelAlmostThere}
                   </Text>
                 </View>
                 <TouchableOpacity
@@ -437,11 +449,11 @@ export default function CustomerHomeScreen() {
                       {
                         color: accentColor,
                         fontFamily: "Inter_600SemiBold",
-                        fontSize: 13,
+                        fontSize: fs(13),
                       },
                     ]}
                   >
-                    Voir tous
+                    {labelSeeAll}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -476,7 +488,7 @@ export default function CustomerHomeScreen() {
                             { fontFamily: "Inter_700Bold" },
                           ]}
                         >
-                          🔥 Presque !
+                          {labelAlmostBadge}
                         </Text>
                       </View>
                     )}
@@ -487,7 +499,7 @@ export default function CustomerHomeScreen() {
                           { backgroundColor: accentColor + "26" },
                         ]}
                       >
-                        <Feather name={icon} size={18} color={accentColor} />
+                        <Feather name={icon} size={iconSize(18)} color={accentColor} />
                       </View>
                       <View style={styles.progressCardInfo}>
                         <Text
@@ -510,7 +522,7 @@ export default function CustomerHomeScreen() {
                             },
                           ]}
                         >
-                          Récompense : {item.reward_name}
+                          {labelReward} {item.reward_name}
                         </Text>
                       </View>
                       <View style={styles.progressPointsCol}>
@@ -531,7 +543,7 @@ export default function CustomerHomeScreen() {
                             },
                           ]}
                         >
-                          restants
+                          {labelRemaining}
                         </Text>
                       </View>
                     </View>
@@ -567,77 +579,160 @@ export default function CustomerHomeScreen() {
             </View>
           )}
 
-          {redeemableRewards.length > 0 && (
+          {/* ✅ Mes favoris */}
+          {favRewards.length > 0 && (
             <View style={styles.section}>
-              <Text
-                style={[
-                  styles.sectionTitle,
-                  {
-                    color: colors.foreground,
-                    fontFamily: "Inter_700Bold",
-                    marginBottom: 12,
-                  },
-                ]}
-              >
-                Récompenses disponibles
-              </Text>
-              {redeemableRewards.slice(0, 3).map((reward: any) => (
-                <Card key={reward.id} style={{ marginBottom: 10 }}>
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 12,
-                    }}
+              <View style={styles.sectionHeader}>
+                <Text
+                  style={[
+                    styles.sectionTitle,
+                    { color: colors.foreground, fontFamily: "Inter_700Bold" },
+                  ]}
+                >
+                  {language === "ar"
+                    ? "⭐ المفضلة"
+                    : language === "en"
+                      ? "⭐ Favorites"
+                      : "⭐ Mes favoris"}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => router.push("/(customer)/rewards")}
+                >
+                  <Text
+                    style={[
+                      styles.viewAll,
+                      {
+                        color: accentColor,
+                        fontFamily: "Inter_600SemiBold",
+                        fontSize: fs(13),
+                      },
+                    ]}
                   >
+                    {labelSeeAll}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {favRewards.slice(0, 3).map((reward: any) => {
+                const canRedeem =
+                  (reward.customer_points ?? 0) >= reward.points_required;
+                return (
+                  <Card key={reward.id} style={{ marginBottom: 10 }}>
                     <View
-                      style={[
-                        styles.categoryIcon,
-                        { backgroundColor: "#F9A60220" },
-                      ]}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 12,
+                      }}
                     >
-                      <Feather name="gift" size={18} color="#F9A602" />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text
+                      <View
                         style={[
-                          styles.progressMerchantName,
+                          styles.categoryIcon,
                           {
-                            color: colors.foreground,
-                            fontFamily: "Inter_700Bold",
+                            backgroundColor: canRedeem
+                              ? "#F9A60220"
+                              : colors.muted,
                           },
                         ]}
                       >
-                        {reward.name}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.progressRewardLabel,
-                          {
-                            color: colors.mutedForeground,
-                            fontFamily: "Inter_400Regular",
-                          },
-                        ]}
-                      >
-                        {reward.merchant_name} · {reward.points_required} pts
-                      </Text>
+                        <Feather
+                          name="gift"
+                          size={iconSize(18)}
+                          color={canRedeem ? "#F9A602" : colors.mutedForeground}
+                        />
+                      </View>
+                      <View style={{ flex: 1, gap: 2 }}>
+                        <Text
+                          style={[
+                            styles.progressMerchantName,
+                            {
+                              color: colors.foreground,
+                              fontFamily: "Inter_700Bold",
+                            },
+                          ]}
+                        >
+                          {reward.name}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.progressRewardLabel,
+                            {
+                              color: colors.mutedForeground,
+                              fontFamily: "Inter_400Regular",
+                            },
+                          ]}
+                        >
+                          {reward.merchant_name} · {reward.customer_points ?? 0}
+                          /{reward.points_required} pts
+                        </Text>
+                        {/* Mini barre de progression */}
+                        <View
+                          style={[
+                            styles.progressTrackBar,
+                            {
+                              backgroundColor: colors.border,
+                              height: 3,
+                              marginTop: 2,
+                            },
+                          ]}
+                        >
+                          <View
+                            style={[
+                              styles.progressFillBar,
+                              {
+                                width:
+                                  `${Math.min(100, ((reward.customer_points ?? 0) / reward.points_required) * 100).toFixed(0)}%` as any,
+                                backgroundColor: canRedeem
+                                  ? "#F9A602"
+                                  : accentColor,
+                                height: 3,
+                              },
+                            ]}
+                          />
+                        </View>
+                      </View>
+                      {canRedeem ? (
+                        <TouchableOpacity
+                          onPress={() => openQRModal(reward)}
+                          style={[
+                            styles.useBtn,
+                            { backgroundColor: accentColor },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.useBtnText,
+                              { fontFamily: "Inter_600SemiBold" },
+                            ]}
+                          >
+                            {labelUse}
+                          </Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <View
+                          style={[
+                            styles.useBtn,
+                            { backgroundColor: colors.border },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.useBtnText,
+                              {
+                                fontFamily: "Inter_600SemiBold",
+                                color: colors.mutedForeground,
+                              },
+                            ]}
+                          >
+                            {reward.points_required -
+                              (reward.customer_points ?? 0)}{" "}
+                            pts
+                          </Text>
+                        </View>
+                      )}
                     </View>
-                    <TouchableOpacity
-                      onPress={() => handleRedeem(reward)}
-                      style={[styles.useBtn, { backgroundColor: accentColor }]}
-                    >
-                      <Text
-                        style={[
-                          styles.useBtnText,
-                          { fontFamily: "Inter_600SemiBold" },
-                        ]}
-                      >
-                        Utiliser
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </Card>
-              ))}
+                  </Card>
+                );
+              })}
             </View>
           )}
 
@@ -649,7 +744,7 @@ export default function CustomerHomeScreen() {
                   { color: colors.foreground, fontFamily: "Inter_700Bold" },
                 ]}
               >
-                Activité récente
+                {labelRecentActivity}
               </Text>
               <TouchableOpacity
                 onPress={() => router.push("/(customer)/merchants")}
@@ -660,7 +755,7 @@ export default function CustomerHomeScreen() {
                     { color: colors.primary, fontFamily: "Inter_600SemiBold" },
                   ]}
                 >
-                  Voir tous
+                  {labelSeeAll}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -675,7 +770,7 @@ export default function CustomerHomeScreen() {
             >
               {transactions.length === 0 ? (
                 <View style={styles.emptyWrap}>
-                  <Feather name="star" size={36} color="#F9A602" />
+                  <Feather name="star" size={iconSize(36)} color="#F9A602" />
                   <Text
                     style={[
                       styles.emptyText,
@@ -685,7 +780,7 @@ export default function CustomerHomeScreen() {
                       },
                     ]}
                   >
-                    Aucune transaction pour le moment
+                    {labelNoTransactions}
                   </Text>
                 </View>
               ) : (
@@ -709,6 +804,17 @@ export default function CustomerHomeScreen() {
           </View>
         </View>
       </ScrollView>
+
+      <RewardQRModal
+        visible={showQRModal}
+        reward={selectedReward}
+        customer={customer}
+        onClose={() => {
+          setShowQRModal(false);
+          setSelectedReward(null);
+        }}
+        onValidated={() => loadData()}
+      />
     </View>
   );
 }
@@ -722,17 +828,17 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 32,
     overflow: "hidden",
   },
-  welcome: { color: "rgba(255,255,255,0.9)", fontSize: 16, marginBottom: 8 },
+  welcome: { color: "rgba(255,255,255,0.9)", fontSize: fs(16), marginBottom: 8 },
   pointsRow: {
     flexDirection: "row",
     alignItems: "baseline",
     gap: 8,
     marginBottom: 20,
   },
-  pointsValue: { color: "#F9A602", fontSize: 48, lineHeight: 54 },
-  pointsLabel: { color: "rgba(255,255,255,0.85)", fontSize: 18 },
+  pointsValue: { color: "#F9A602", fontSize: fs(48), lineHeight: fs(54) },
+  pointsLabel: { color: "rgba(255,255,255,0.85)", fontSize: fs(18) },
   progressSection: { gap: 6 },
-  progressSubLabel: { color: "rgba(255,255,255,0.75)", fontSize: 12 },
+  progressSubLabel: { color: "rgba(255,255,255,0.75)", fontSize: fs(12) },
   progressTrack: {
     height: 8,
     backgroundColor: "rgba(0,0,0,0.25)",
@@ -742,7 +848,7 @@ const styles = StyleSheet.create({
   progressFill: { height: 8, backgroundColor: "#F9A602", borderRadius: 99 },
   progressCount: {
     color: "rgba(255,255,255,0.85)",
-    fontSize: 12,
+    fontSize: fs(12),
     textAlign: "right",
   },
   content: { padding: 20, marginTop: 4 },
@@ -753,10 +859,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 12,
   },
-  sectionTitle: { fontSize: 17 },
-  viewAll: { fontSize: 14 },
+  sectionTitle: { fontSize: fs(17) },
+  viewAll: { fontSize: fs(14) },
   emptyWrap: { padding: 36, alignItems: "center", gap: 12 },
-  emptyText: { fontSize: 14, textAlign: "center" },
+  emptyText: { fontSize: fs(14), textAlign: "center" },
   progressCard: {
     borderRadius: 16,
     borderWidth: 0.5,
@@ -769,7 +875,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
-  urgencyText: { color: "#F9A602", fontSize: 10 },
+  urgencyText: { color: "#F9A602", fontSize: fs(10) },
   progressCardRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -784,19 +890,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   progressCardInfo: { flex: 1, gap: 2 },
-  progressMerchantName: { fontSize: 14 },
-  progressRewardLabel: { fontSize: 12 },
+  progressMerchantName: { fontSize: fs(14) },
+  progressRewardLabel: { fontSize: fs(12) },
   progressPointsCol: { alignItems: "flex-end", gap: 1 },
-  progressPoints: { fontSize: 14 },
-  progressPointsLabel: { fontSize: 11 },
+  progressPoints: { fontSize: fs(14) },
+  progressPointsLabel: { fontSize: fs(11) },
   progressBarSection: { gap: 4 },
-  progressPct: { fontSize: 11, textAlign: "right" },
+  progressPct: { fontSize: fs(11), textAlign: "right" },
   progressTrackBar: { height: 6, borderRadius: 99, overflow: "hidden" },
   progressFillBar: { height: 6, borderRadius: 99 },
   useBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99 },
-  useBtnText: { color: "#fff", fontSize: 13 },
-
-  // ── Toast ──
+  useBtnText: { color: "#fff", fontSize: fs(13) },
   toast: {
     position: "absolute",
     top: STATUS_BAR_HEIGHT + 12,
@@ -824,9 +928,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  toastText: {
-    color: "#fff",
-    fontSize: 15,
-    flex: 1,
-  },
+  toastText: { color: "#fff", fontSize: fs(15), flex: 1 },
 });

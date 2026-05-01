@@ -8,6 +8,7 @@ import { Platform, StyleSheet, View, useColorScheme } from "react-native";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { useTranslation } from "react-i18next";
+import { iconSize } from "@/utils/responsive";
 
 function NativeTabLayout() {
   const { t } = useTranslation();
@@ -82,7 +83,7 @@ function ClassicTabLayout() {
         options={{
           title: t("customer.home"),
           tabBarIcon: ({ color }) => (
-            <Feather name="home" size={22} color={color} />
+            <Feather name="home" size={iconSize(22)} color={color} />
           ),
         }}
       />
@@ -91,7 +92,7 @@ function ClassicTabLayout() {
         options={{
           title: t("customer.merchants"),
           tabBarIcon: ({ color }) => (
-            <Feather name="map-pin" size={22} color={color} />
+            <Feather name="map-pin" size={iconSize(22)} color={color} />
           ),
         }}
       />
@@ -100,7 +101,7 @@ function ClassicTabLayout() {
         options={{
           title: "Mon QR",
           tabBarIcon: ({ color }) => (
-            <Feather name="maximize-2" size={22} color={color} />
+            <Feather name="maximize-2" size={iconSize(22)} color={color} />
           ),
         }}
       />
@@ -109,7 +110,7 @@ function ClassicTabLayout() {
         options={{
           title: t("customer.rewards"),
           tabBarIcon: ({ color }) => (
-            <Feather name="gift" size={22} color={color} />
+            <Feather name="gift" size={iconSize(22)} color={color} />
           ),
         }}
       />
@@ -118,7 +119,7 @@ function ClassicTabLayout() {
         options={{
           title: t("customer.profile"),
           tabBarIcon: ({ color }) => (
-            <Feather name="user" size={22} color={color} />
+            <Feather name="user" size={iconSize(22)} color={color} />
           ),
         }}
       />

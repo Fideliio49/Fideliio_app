@@ -3,6 +3,7 @@ import React, {
   useContext,
   useState,
   useEffect,
+  useRef,
   ReactNode,
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -55,6 +56,10 @@ interface AppContextType {
   setColorTheme: (theme: ColorTheme) => Promise<void>;
   setAccentColor: (color: string) => Promise<void>;
   setMerchantAccentColor: (color: string) => Promise<void>;
+  activeRole: "customer" | "merchant" | null;
+  globalToastMsg: string;
+  globalToastVisible: boolean;
+  showGlobalToast: (msg: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -98,6 +103,11 @@ function buildUserFromSession(
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUserState] = useState<User | null>(null);
+  const [activeRole, setActiveRole] = useState<"customer" | "merchant" | null>(
+    null,
+  );
+  const [globalToastMsg, setGlobalToastMsg] = useState("");
+  const [globalToastVisible, setGlobalToastVisible] = useState(false);
   const [language, setLanguageState] = useState<Language>("fr");
   const [isOnboarded, setIsOnboarded] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -125,6 +135,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
     });
 
+    // ✅ Global Realtime — écoute les nouvelles transactions partout
+    supabase.auth.getSession().then(({ data: { session: sess } }) => {
+      if (!sess) return;
+      supabase
+        .from("customers")
+        .select("id")
+        .eq("user_id", sess.user.id)
+        .maybeSingle()
+        .then(({ data: cust }) => {
+          if (!cust?.id) return;
+          supabase
+            .channel(`global-tx-${cust.id}`)
+            .on(
+              "postgres_changes",
+              {
+                event: "INSERT",
+                schema: "public",
+                table: "transactions",
+                filter: `customer_id=eq.${cust.id}`,
+              },
+              (payload) => {
+                const tx = payload.new as any;
+                if (tx.points_earned > 0) {
+                  showGlobalToast(
+                    `+${tx.points_earned} pts chez ${tx.merchant_name} 🎉`,
+                  );
+                }
+              },
+            )
+            .subscribe();
+        });
+    });
+
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -135,8 +178,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // ✅ Toujours onboardé quand session détectée
         setIsOnboarded(true);
         AsyncStorage.setItem(STORAGE_KEYS.ONBOARDED, "true");
+        AsyncStorage.getItem("@active_role").then((r) => {
+          if (r) setActiveRole(r as "customer" | "merchant");
+        });
       } else {
         setUserState(null);
+        setActiveRole(null);
       }
     });
 
@@ -151,12 +198,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         storedTheme,
         storedAccent,
         storedMerchantAccent,
+        storedActiveRole,
       ] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEYS.LANGUAGE),
         AsyncStorage.getItem(STORAGE_KEYS.ONBOARDED),
         AsyncStorage.getItem(STORAGE_KEYS.CUSTOMER_THEME),
         AsyncStorage.getItem(STORAGE_KEYS.ACCENT_COLOR),
         AsyncStorage.getItem(STORAGE_KEYS.MERCHANT_ACCENT_COLOR),
+        AsyncStorage.getItem("@active_role"),
       ]);
 
       let resolvedLang: Language = "fr";
@@ -167,6 +216,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         applyRTL(resolvedLang);
       }
       if (storedOnboarded === "true") setIsOnboarded(true);
+      if (storedActiveRole)
+        setActiveRole(storedActiveRole as "customer" | "merchant");
       if (storedTheme) setColorThemeState(storedTheme as ColorTheme);
       if (storedAccent) setAccentColorState(storedAccent);
       if (storedMerchantAccent)
@@ -190,24 +241,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setUserState(newUser);
   }
 
+  const globalToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function showGlobalToast(msg: string) {
+    if (globalToastTimer.current) clearTimeout(globalToastTimer.current);
+    setGlobalToastMsg(msg);
+    setGlobalToastVisible(true);
+    globalToastTimer.current = setTimeout(
+      () => setGlobalToastVisible(false),
+      3500,
+    );
+  }
+
   async function logout() {
     await AuthLib.logout();
     setUserState(null);
+    setActiveRole(null);
+    await AsyncStorage.removeItem("@active_role");
     // ✅ isOnboarded reste true → pas de re-onboarding après logout
   }
 
   async function deleteAccount() {
-    if (!user) return;
-
-    try {
-      await AuthLib.deleteAccount(user.role);
-    } catch (e: any) {
-      // ✅ Afficher l'erreur au lieu de l'ignorer
-      throw e;
+    if (user) {
+      try {
+        await AuthLib.deleteAccount(user.role);
+      } catch (e) {
+        console.warn("deleteAccount error:", e);
+      }
     }
-
     setUserState(null);
-    setIsOnboarded(false);
+    setIsOnboarded(false); // Reset complet seulement si suppression compte
     setColorThemeState("light");
     setAccentColorState(DEFAULT_ACCENT);
     setMerchantAccentColorState(DEFAULT_MERCHANT_ACCENT);
@@ -254,6 +317,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setColorTheme,
         setAccentColor,
         setMerchantAccentColor,
+        activeRole,
+        globalToastMsg,
+        globalToastVisible,
+        showGlobalToast,
       }}
     >
       {children}

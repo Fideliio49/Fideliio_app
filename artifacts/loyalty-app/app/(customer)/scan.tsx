@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { fs, iconSize } from "@/utils/responsive";
 import {
   View,
   Text,
@@ -14,29 +15,91 @@ import QRCode from "react-native-qrcode-svg";
 import { useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTranslation } from "react-i18next";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { supabase } from "@/lib/supabase";
 
+type MerchantProgress = {
+  merchant_id: string;
+  business_name: string;
+  current_points: number;
+  max_points: number;
+  progress: number; // 0-100
+};
+
 export default function CustomerQrCodeScreen() {
   const colors = useColors();
-  const { user, colorTheme } = useApp();
+  const { user, colorTheme, language, accentColor } = useApp();
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
-
   const [customer, setCustomer] = useState<any>(null);
   const [totalPoints, setTotalPoints] = useState(0);
+  const [merchantProgress, setMerchantProgress] = useState<MerchantProgress[]>(
+    [],
+  );
   const [loading, setLoading] = useState(true);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : 0;
   const isDark = colorTheme === "dark";
 
+  const labelTitle =
+    language === "ar"
+      ? "رمز QR الخاص بي"
+      : language === "en"
+        ? "My QR Code"
+        : "Mon QR Code";
+  const labelSubtitle =
+    language === "ar"
+      ? "قدّم هذا الرمز عند كل عملية شراء"
+      : language === "en"
+        ? "Present this code at each purchase"
+        : "Présentez ce code lors de chaque achat";
+  const labelHint =
+    language === "ar"
+      ? "سيقوم التاجر بمسح رمز QR هذا للتحقق من شرائك وإضافة النقاط."
+      : language === "en"
+        ? "The merchant will scan this QR code to validate your purchase and credit your points."
+        : "Le marchand scannera ce QR code pour valider votre achat et créditer vos points.";
+  const labelShare =
+    language === "ar"
+      ? "مشاركة رمز QR"
+      : language === "en"
+        ? "Share my QR Code"
+        : "Partager mon QR Code";
+  const labelUnavailable =
+    language === "ar"
+      ? "رمز QR غير متوفر"
+      : language === "en"
+        ? "QR Code unavailable"
+        : "QR Code non disponible";
+  const labelReconnect =
+    language === "ar"
+      ? "يرجى إعادة الاتصال لإنشاء رمز QR."
+      : language === "en"
+        ? "Please reconnect to generate your QR code."
+        : "Veuillez vous reconnecter pour générer votre QR code.";
+  const labelMyProgress =
+    language === "ar"
+      ? "تقدمي لدى التجار"
+      : language === "en"
+        ? "My progress"
+        : "Ma progression";
+  const labelRemaining =
+    language === "ar" ? "متبقي" : language === "en" ? "remaining" : "restants";
+  const labelMax =
+    language === "ar"
+      ? "وصلت للحد الأقصى!"
+      : language === "en"
+        ? "Max reached!"
+        : "Plafond atteint !";
+
   useFocusEffect(
     useCallback(() => {
       StatusBar.setBarStyle(isDark ? "light-content" : "dark-content", true);
-      if (Platform.OS === "android") {
+      if (Platform.OS === "android")
         StatusBar.setBackgroundColor(isDark ? "#121212" : "#F9FAFB", true);
-      }
       loadCustomer();
     }, [isDark, user]),
   );
@@ -45,44 +108,73 @@ export default function CustomerQrCodeScreen() {
     if (!user?.id) return;
     try {
       setLoading(true);
-
-      // Charger le profil client depuis Supabase
       const { data: customerData, error } = await supabase
         .from("customers")
         .select("*")
         .eq("user_id", user.id)
         .single();
-
-      if (error) {
-        console.error("Erreur chargement client:", error);
-        return;
-      }
-
+      if (error) return;
       setCustomer(customerData);
 
-      // Charger les points totaux depuis la vue
+      // Points totaux
       const { data: pointsData } = await supabase
         .from("customer_total_points")
         .select("total_points")
         .eq("customer_id", customerData.id)
         .single();
+      setTotalPoints(Math.max(0, pointsData?.total_points ?? 0));
 
-      setTotalPoints(pointsData?.total_points ?? 0);
-    } catch (err) {
-      console.error("Erreur:", err);
+      // ✅ Charger la progression par commerçant (points + max récompense)
+      const { data: merchantPoints } = await supabase
+        .from("customer_merchant_points")
+        .select("merchant_id, total_points, business_name")
+        .eq("customer_id", customerData.id);
+
+      if (merchantPoints && merchantPoints.length > 0) {
+        const merchantIds = merchantPoints.map((m: any) => m.merchant_id);
+        const { data: rewards } = await supabase
+          .from("rewards")
+          .select("merchant_id, points_required")
+          .in("merchant_id", merchantIds)
+          .eq("is_active", true);
+
+        const progress: MerchantProgress[] = merchantPoints
+          .map((mp: any) => {
+            const merchantRewards = (rewards ?? []).filter(
+              (r: any) => r.merchant_id === mp.merchant_id,
+            );
+            if (merchantRewards.length === 0) return null;
+            const maxPts = Math.max(
+              ...merchantRewards.map((r: any) => r.points_required),
+            );
+            const current = Math.max(0, mp.total_points ?? 0);
+            return {
+              merchant_id: mp.merchant_id,
+              business_name: mp.business_name,
+              current_points: current,
+              max_points: maxPts,
+              progress: Math.min(100, Math.round((current / maxPts) * 100)),
+            };
+          })
+          .filter(Boolean) as MerchantProgress[];
+
+        // Trier : plafond atteint en premier, puis par progression décroissante
+        progress.sort((a, b) => b.progress - a.progress);
+        setMerchantProgress(progress);
+      }
+    } catch {
     } finally {
       setLoading(false);
     }
   }
 
-  // QR code = valeur exacte depuis la base de données
   const qrCodeValue = customer?.qr_code ?? null;
 
   async function handleShare() {
     if (!qrCodeValue) return;
     try {
       await Share.share({
-        message: `Mon code Fideliio : ${qrCodeValue}`,
+        message: `${language === "ar" ? "رمز Fideliio الخاص بي:" : language === "en" ? "My Fideliio code:" : "Mon code Fideliio :"} ${qrCodeValue}`,
       });
     } catch {}
   }
@@ -117,14 +209,14 @@ export default function CustomerQrCodeScreen() {
           },
         ]}
       >
-        <Feather name="alert-circle" size={48} color={colors.mutedForeground} />
+        <Feather name="alert-circle" size={iconSize(48)} color={colors.mutedForeground} />
         <Text
           style={[
             styles.title,
             { color: colors.foreground, textAlign: "center", marginTop: 16 },
           ]}
         >
-          QR Code non disponible
+          {labelUnavailable}
         </Text>
         <Text
           style={[
@@ -132,7 +224,7 @@ export default function CustomerQrCodeScreen() {
             { color: colors.mutedForeground, textAlign: "center" },
           ]}
         >
-          Veuillez vous reconnecter pour générer votre QR code.
+          {labelReconnect}
         </Text>
       </View>
     );
@@ -153,7 +245,7 @@ export default function CustomerQrCodeScreen() {
           { color: colors.foreground, fontFamily: "Inter_700Bold" },
         ]}
       >
-        Mon QR Code
+        {labelTitle}
       </Text>
       <Text
         style={[
@@ -161,9 +253,10 @@ export default function CustomerQrCodeScreen() {
           { color: colors.mutedForeground, fontFamily: "Inter_400Regular" },
         ]}
       >
-        Présentez ce code lors de chaque achat
+        {labelSubtitle}
       </Text>
 
+      {/* ── QR Card ── */}
       <View
         style={[
           styles.card,
@@ -178,7 +271,6 @@ export default function CustomerQrCodeScreen() {
             backgroundColor="white"
           />
         </View>
-
         <Text
           style={[
             styles.userName,
@@ -187,19 +279,17 @@ export default function CustomerQrCodeScreen() {
         >
           {customer?.first_name} {customer?.last_name}
         </Text>
-
         <View style={styles.pointsPill}>
-          <Feather name="star" size={14} color="#F9A602" />
+          <Feather name="star" size={iconSize(14)} color="#F9A602" />
           <Text
             style={[
               styles.pointsText,
               { color: "#F9A602", fontFamily: "Inter_700Bold" },
             ]}
           >
-            {totalPoints} points
+            {totalPoints} {t("common.points").toLowerCase()}
           </Text>
         </View>
-
         <Text
           style={[
             styles.codeText,
@@ -210,6 +300,106 @@ export default function CustomerQrCodeScreen() {
         </Text>
       </View>
 
+      {/* ✅ Progression par commerçant */}
+      {merchantProgress.length > 0 && (
+        <View
+          style={[
+            styles.progressSection,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          <Text
+            style={[
+              styles.progressTitle,
+              { color: colors.foreground, fontFamily: "Inter_700Bold" },
+            ]}
+          >
+            {labelMyProgress}
+          </Text>
+          {merchantProgress.map((mp) => {
+            const isAtMax = mp.progress >= 100;
+            const remaining = Math.max(0, mp.max_points - mp.current_points);
+            return (
+              <View key={mp.merchant_id} style={styles.progressItem}>
+                <View style={styles.progressItemHeader}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 8,
+                      flex: 1,
+                    }}
+                  >
+                    <View
+                      style={[
+                        styles.merchantDot,
+                        {
+                          backgroundColor: isAtMax
+                            ? accentColor
+                            : colors.primary,
+                        },
+                      ]}
+                    />
+                    <Text
+                      style={[
+                        styles.merchantName,
+                        {
+                          color: colors.foreground,
+                          fontFamily: "Inter_600SemiBold",
+                        },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {mp.business_name}
+                    </Text>
+                  </View>
+                  <Text
+                    style={[
+                      styles.progressPts,
+                      {
+                        color: isAtMax ? accentColor : colors.mutedForeground,
+                        fontFamily: "Inter_600SemiBold",
+                      },
+                    ]}
+                  >
+                    {mp.current_points}/{mp.max_points}
+                  </Text>
+                </View>
+                {/* Barre de progression */}
+                <View
+                  style={[styles.barTrack, { backgroundColor: colors.border }]}
+                >
+                  <View
+                    style={[
+                      styles.barFill,
+                      {
+                        width: `${mp.progress}%` as any,
+                        backgroundColor: isAtMax ? accentColor : colors.primary,
+                      },
+                    ]}
+                  />
+                </View>
+                {/* Message restant / plafond */}
+                <Text
+                  style={[
+                    styles.progressHint,
+                    {
+                      color: isAtMax ? accentColor : colors.mutedForeground,
+                      fontFamily: "Inter_400Regular",
+                    },
+                  ]}
+                >
+                  {isAtMax
+                    ? `🎁 ${labelMax}`
+                    : `${remaining} pts ${labelRemaining}`}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      )}
+
+      {/* Hint */}
       <View
         style={[
           styles.hintBox,
@@ -219,18 +409,18 @@ export default function CustomerQrCodeScreen() {
           },
         ]}
       >
-        <Feather name="info" size={16} color={colors.primary} />
+        <Feather name="info" size={iconSize(16)} color={colors.primary} />
         <Text
           style={[
             styles.hintText,
             { color: colors.primary, fontFamily: "Inter_400Regular" },
           ]}
         >
-          Le marchand scannera ce QR code pour valider votre achat et créditer
-          vos points.
+          {labelHint}
         </Text>
       </View>
 
+      {/* Share */}
       <TouchableOpacity
         onPress={handleShare}
         style={[
@@ -243,14 +433,14 @@ export default function CustomerQrCodeScreen() {
         ]}
         activeOpacity={0.8}
       >
-        <Feather name="share-2" size={18} color={colors.primary} />
+        <Feather name="share-2" size={iconSize(18)} color={colors.primary} />
         <Text
           style={[
             styles.shareBtnText,
             { color: colors.primary, fontFamily: "Inter_600SemiBold" },
           ]}
         >
-          Partager mon QR Code
+          {labelShare}
         </Text>
       </TouchableOpacity>
     </ScrollView>
@@ -260,8 +450,8 @@ export default function CustomerQrCodeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scroll: { paddingHorizontal: 24, alignItems: "center" },
-  title: { fontSize: 24, marginBottom: 6, alignSelf: "flex-start" },
-  subtitle: { fontSize: 14, marginBottom: 28, alignSelf: "flex-start" },
+  title: { fontSize: fs(24), marginBottom: 6, alignSelf: "flex-start" },
+  subtitle: { fontSize: fs(14), marginBottom: 28, alignSelf: "flex-start" },
   card: {
     width: "100%",
     borderRadius: 24,
@@ -281,7 +471,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     marginBottom: 4,
   },
-  userName: { fontSize: 20 },
+  userName: { fontSize: fs(20) },
   pointsPill: {
     flexDirection: "row",
     alignItems: "center",
@@ -291,8 +481,31 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFF8E1",
     borderRadius: 99,
   },
-  pointsText: { fontSize: 15 },
-  codeText: { fontSize: 12, letterSpacing: 1.5, marginTop: 4 },
+  pointsText: { fontSize: fs(15) },
+  codeText: { fontSize: fs(12), letterSpacing: 1.5, marginTop: 4 },
+  // ✅ Section progression
+  progressSection: {
+    width: "100%",
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 16,
+    marginBottom: 16,
+    gap: 12,
+  },
+  progressTitle: { fontSize: fs(15), marginBottom: 4 },
+  progressItem: { gap: 4 },
+  progressItemHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  merchantDot: { width: 8, height: 8, borderRadius: 4 },
+  merchantName: { fontSize: fs(14), flex: 1 },
+  progressPts: { fontSize: fs(13) },
+  barTrack: { height: 6, borderRadius: 99, overflow: "hidden" },
+  barFill: { height: 6, borderRadius: 99 },
+  progressHint: { fontSize: fs(11) },
+  // Hint & share
   hintBox: {
     flexDirection: "row",
     gap: 10,
@@ -303,7 +516,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     alignItems: "flex-start",
   },
-  hintText: { flex: 1, fontSize: 13, lineHeight: 19 },
+  hintText: { flex: 1, fontSize: fs(13), lineHeight: 19 },
   shareBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -314,5 +527,5 @@ const styles = StyleSheet.create({
     width: "100%",
     justifyContent: "center",
   },
-  shareBtnText: { fontSize: 15 },
+  shareBtnText: { fontSize: fs(15) },
 });

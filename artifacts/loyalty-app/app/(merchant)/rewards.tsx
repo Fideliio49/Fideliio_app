@@ -10,6 +10,7 @@ import {
   Alert,
   Platform,
 } from "react-native";
+import { fs, iconSize } from "@/utils/responsive";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -32,13 +33,14 @@ const TYPE_ICONS: Record<RewardType, keyof typeof Feather.glyphMap> = {
 
 export default function MerchantRewardsScreen() {
   const colors = useColors();
-  const { user, isRTL, merchantAccentColor } = useApp(); // ✅ merchantAccentColor
+  const { user, isRTL, merchantAccentColor } = useApp();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
 
   const [merchant, setMerchant] = useState<any>(null);
   const [rewards, setRewards] = useState<any[]>([]);
   const [showCreate, setShowCreate] = useState(false);
+  const [editingReward, setEditingReward] = useState<any>(null); // ✅ null = création, objet = édition
   const [name, setName] = useState("");
   const [pointsRequired, setPointsRequired] = useState("");
   const [rewardType, setRewardType] = useState<RewardType>("discount");
@@ -81,7 +83,36 @@ export default function MerchantRewardsScreen() {
     setRewards(rewardsData ?? []);
   }
 
-  async function handleCreate() {
+  // ✅ Ouvrir modal en mode édition
+  function handleOpenEdit(reward: any) {
+    setEditingReward(reward);
+    setName(reward.name);
+    setPointsRequired(String(reward.points_required));
+    setRewardType(reward.reward_type as RewardType);
+    setErrors({});
+    setShowCreate(true);
+  }
+
+  // ✅ Ouvrir modal en mode création
+  function handleOpenCreate() {
+    setEditingReward(null);
+    setName("");
+    setPointsRequired("");
+    setRewardType("discount");
+    setErrors({});
+    setShowCreate(true);
+  }
+
+  function handleCloseModal() {
+    setShowCreate(false);
+    setEditingReward(null);
+    setName("");
+    setPointsRequired("");
+    setRewardType("discount");
+    setErrors({});
+  }
+
+  async function handleSave() {
     const errs: Record<string, string> = {};
     if (!name.trim()) errs.name = t("common.error");
     if (!pointsRequired.trim() || isNaN(parseInt(pointsRequired)))
@@ -91,41 +122,51 @@ export default function MerchantRewardsScreen() {
       return;
     }
 
-    let currentMerchant = merchant;
-    if (!currentMerchant) {
-      const { data } = await supabase
-        .from("merchants")
-        .select("*")
-        .eq("user_id", user!.id)
-        .maybeSingle();
-      if (!data) {
-        Alert.alert(t("common.error"), "Aucun commerce trouvé.");
-        return;
-      }
-      currentMerchant = data;
-      setMerchant(data);
-    }
-
     setLoading(true);
     try {
-      const { nanoid } = await import("nanoid/non-secure");
-      const { error } = await supabase.from("rewards").insert({
-        id: nanoid(),
-        merchant_id: currentMerchant.id,
-        merchant_name: currentMerchant.business_name,
-        name: name.trim(),
-        points_required: parseInt(pointsRequired),
-        reward_type: rewardType,
-        is_active: true,
-        created_at: new Date().toISOString(),
-      });
-      if (error) throw error;
+      if (editingReward) {
+        // ✅ Mode édition — UPDATE
+        const { error } = await supabase
+          .from("rewards")
+          .update({
+            name: name.trim(),
+            points_required: parseInt(pointsRequired),
+            reward_type: rewardType,
+          })
+          .eq("id", editingReward.id);
+        if (error) throw error;
+      } else {
+        // Mode création — INSERT
+        let currentMerchant = merchant;
+        if (!currentMerchant) {
+          const { data } = await supabase
+            .from("merchants")
+            .select("*")
+            .eq("user_id", user!.id)
+            .maybeSingle();
+          if (!data) {
+            Alert.alert(t("common.error"), "Aucun commerce trouvé.");
+            return;
+          }
+          currentMerchant = data;
+          setMerchant(data);
+        }
+        const { nanoid } = await import("nanoid/non-secure");
+        const { error } = await supabase.from("rewards").insert({
+          id: nanoid(),
+          merchant_id: currentMerchant.id,
+          merchant_name: currentMerchant.business_name,
+          name: name.trim(),
+          points_required: parseInt(pointsRequired),
+          reward_type: rewardType,
+          is_active: true,
+          created_at: new Date().toISOString(),
+        });
+        if (error) throw error;
+      }
+
       await loadData();
-      setName("");
-      setPointsRequired("");
-      setRewardType("discount");
-      setErrors({});
-      setShowCreate(false);
+      handleCloseModal();
     } catch (err: any) {
       Alert.alert(t("common.error"), err.message);
     } finally {
@@ -183,9 +224,8 @@ export default function MerchantRewardsScreen() {
           >
             {t("merchant.rewards")}
           </Text>
-          {/* ✅ merchantAccentColor */}
           <TouchableOpacity
-            onPress={() => setShowCreate(true)}
+            onPress={handleOpenCreate}
             style={[
               styles.createBtn,
               {
@@ -194,7 +234,7 @@ export default function MerchantRewardsScreen() {
               },
             ]}
           >
-            <Feather name="plus" size={18} color="#fff" />
+            <Feather name="plus" size={iconSize(18)} color="#fff" />
           </TouchableOpacity>
         </View>
       </View>
@@ -206,7 +246,6 @@ export default function MerchantRewardsScreen() {
         renderItem={({ item }) => (
           <Card style={{ marginBottom: 10 }}>
             <View style={[styles.rewardRow, { flexDirection: rowDir }]}>
-              {/* ✅ merchantAccentColor pour l'icône active */}
               <View
                 style={[
                   styles.iconBox,
@@ -255,7 +294,6 @@ export default function MerchantRewardsScreen() {
                 </Text>
               </View>
               <View style={[styles.rewardActions, { flexDirection: rowDir }]}>
-                {/* ✅ merchantAccentColor pour le switch */}
                 <Switch
                   value={item.is_active}
                   onValueChange={(v) => handleToggle(item.id, v)}
@@ -269,6 +307,14 @@ export default function MerchantRewardsScreen() {
                       : colors.mutedForeground
                   }
                 />
+                {/* ✅ Bouton édition */}
+                <TouchableOpacity onPress={() => handleOpenEdit(item)}>
+                  <Feather
+                    name="edit-2"
+                    size={18}
+                    color={merchantAccentColor}
+                  />
+                </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => handleDelete(item.id, item.name)}
                 >
@@ -286,7 +332,7 @@ export default function MerchantRewardsScreen() {
         scrollEnabled={!!rewards.length}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Feather name="gift" size={40} color={colors.mutedForeground} />
+            <Feather name="gift" size={iconSize(40)} color={colors.mutedForeground} />
             <Text
               style={[
                 styles.emptyText,
@@ -298,17 +344,16 @@ export default function MerchantRewardsScreen() {
             >
               {t("rewards.createReward")}
             </Text>
-            {/* ✅ merchantAccentColor pour le bouton */}
             <Button
               title={t("rewards.createReward")}
-              onPress={() => setShowCreate(true)}
+              onPress={handleOpenCreate}
               style={{ backgroundColor: merchantAccentColor }}
             />
           </View>
         }
       />
 
-      {/* ── Modal création ── */}
+      {/* ── Modal création / édition ── */}
       <Modal visible={showCreate} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View
@@ -318,6 +363,7 @@ export default function MerchantRewardsScreen() {
             ]}
           >
             <View style={[styles.modalHeader, { flexDirection: rowDir }]}>
+              {/* ✅ Titre dynamique selon le mode */}
               <Text
                 style={[
                   styles.modalTitle,
@@ -328,10 +374,12 @@ export default function MerchantRewardsScreen() {
                   },
                 ]}
               >
-                {t("rewards.createReward")}
+                {editingReward
+                  ? "Modifier la récompense"
+                  : t("rewards.createReward")}
               </Text>
-              <TouchableOpacity onPress={() => setShowCreate(false)}>
-                <Feather name="x" size={22} color={colors.mutedForeground} />
+              <TouchableOpacity onPress={handleCloseModal}>
+                <Feather name="x" size={iconSize(22)} color={colors.mutedForeground} />
               </TouchableOpacity>
             </View>
             <KeyboardAwareScrollView
@@ -381,7 +429,6 @@ export default function MerchantRewardsScreen() {
                       styles.typeBtn,
                       {
                         borderRadius: colors.radius,
-                        // ✅ merchantAccentColor pour la sélection
                         borderColor:
                           rewardType === rt
                             ? merchantAccentColor
@@ -413,7 +460,7 @@ export default function MerchantRewardsScreen() {
                           rewardType === rt
                             ? "Inter_600SemiBold"
                             : "Inter_400Regular",
-                        fontSize: 12,
+                        fontSize: fs(12),
                         textAlign: "center",
                       }}
                     >
@@ -422,10 +469,9 @@ export default function MerchantRewardsScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
-              {/* ✅ merchantAccentColor pour le bouton Enregistrer */}
               <Button
-                title={t("rewards.save")}
-                onPress={handleCreate}
+                title={editingReward ? t("common.save") : t("rewards.save")}
+                onPress={handleSave}
                 loading={loading}
                 size="lg"
                 style={{ marginTop: 8, backgroundColor: merchantAccentColor }}
@@ -442,7 +488,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { paddingHorizontal: 20, paddingBottom: 12, borderBottomWidth: 1 },
   headerRow: { alignItems: "center", justifyContent: "space-between" },
-  title: { fontSize: 24 },
+  title: { fontSize: fs(24) },
   createBtn: { padding: 10 },
   list: { padding: 16 },
   rewardRow: { alignItems: "center", gap: 12 },
@@ -453,11 +499,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   rewardInfo: { flex: 1, gap: 3 },
-  rewardName: { fontSize: 14 },
-  rewardPts: { fontSize: 12 },
+  rewardName: { fontSize: fs(14) },
+  rewardPts: { fontSize: fs(12) },
   rewardActions: { alignItems: "center", gap: 12 },
   empty: { alignItems: "center", paddingTop: 80, gap: 16 },
-  emptyText: { fontSize: 15 },
+  emptyText: { fontSize: fs(15) },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
@@ -469,8 +515,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 16,
   },
-  modalTitle: { fontSize: 20 },
-  typeLabel: { fontSize: 13, marginBottom: 8 },
+  modalTitle: { fontSize: fs(20) },
+  typeLabel: { fontSize: fs(13), marginBottom: 8 },
   typeRow: { gap: 8, marginBottom: 16 },
   typeBtn: { flex: 1, padding: 10, alignItems: "center", gap: 6 },
 });

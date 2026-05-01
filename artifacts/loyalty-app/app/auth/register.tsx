@@ -8,6 +8,7 @@ import {
   Platform,
   Keyboard,
 } from "react-native";
+import { fs, iconSize } from "@/utils/responsive";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { Feather } from "@expo/vector-icons";
@@ -19,7 +20,7 @@ import { Input } from "@/components/ui/Input";
 import { FideliioLogo } from "@/components/FideliioLogo";
 import { sendPhoneOTP, verifyPhoneOTP } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
-import { nanoid } from "nanoid/non-secure";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const CATEGORIES = [
   "restaurant",
@@ -44,7 +45,6 @@ export default function RegisterScreen() {
 
   const [mode, setMode] = useState<"email" | "phone">("email");
   const [phoneStep, setPhoneStep] = useState<"form" | "otp">("form");
-
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -56,7 +56,6 @@ export default function RegisterScreen() {
   const [businessName, setBusinessName] = useState("");
   const [category, setCategory] = useState<string>("restaurant");
   const [otpCode, setOtpCode] = useState("");
-
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -83,98 +82,100 @@ export default function RegisterScreen() {
     setLoading(true);
     try {
       if (mode === "email") {
-        // ── 1. Créer le compte auth avec role dans les metadata ──
-        const { data: authData, error: authError } = await supabase.auth.signUp(
-          {
-            email: email.trim(),
-            password,
-            options: {
-              data: {
-                role, // ✅ sauvegarde le role
-                first_name: firstName,
-                last_name: lastName,
-                firstName, // ✅ pour buildUserFromSession
-                lastName,
-                businessName: isMerchant ? businessName : undefined,
-                businessCategory: isMerchant ? category : undefined,
-                pointsRate: isMerchant ? 1 : undefined,
-              },
+        // ✅ Le trigger Supabase crée automatiquement les 2 profils
+        const { error: authError } = await supabase.auth.signUp({
+          email: email.trim(),
+          password,
+          options: {
+            data: {
+              role,
+              first_name: firstName.trim(),
+              last_name: lastName.trim(),
+              firstName: firstName.trim(),
+              lastName: lastName.trim(),
+              businessName: isMerchant ? businessName.trim() : undefined,
+              businessCategory: isMerchant ? category : undefined,
             },
           },
-        );
-        if (authError) throw authError;
+        });
 
-        const userId = authData.user!.id;
-        const qrCode = isMerchant
-          ? `FID-MERCH-${nanoid(8).toUpperCase()}`
-          : `FID-CUST-${nanoid(8).toUpperCase()}`;
-
-        // ── 2. Insérer dans la bonne table selon le role ──
-        if (isMerchant) {
-          // Vérifier qu'il n'existe pas déjà (évite les doublons)
-          const { data: existing } = await supabase
-            .from("merchants")
-            .select("id")
-            .eq("user_id", userId)
-            .maybeSingle();
-
-          if (!existing) {
-            const { error: insertError } = await supabase
-              .from("merchants")
-              .insert({
-                id: nanoid(),
-                user_id: userId,
-                business_name: businessName.trim(),
-                category,
-                logo_url: null,
-                points_rate: 1,
-                qr_code: qrCode,
+        if (authError) {
+          // ✅ Email déjà utilisé → se connecter et mettre à jour le profil
+          if (
+            authError.message.includes("already registered") ||
+            authError.message.includes("User already registered")
+          ) {
+            const { data: loginData, error: loginError } =
+              await supabase.auth.signInWithPassword({
+                email: email.trim(),
+                password,
               });
-            if (insertError) throw insertError;
+            if (loginError) {
+              Alert.alert(
+                "Email déjà utilisé",
+                "Cet email existe déjà avec un mot de passe différent.",
+                [
+                  {
+                    text: "Se connecter",
+                    onPress: () => router.replace(`/auth/login?role=${role}`),
+                  },
+                  { text: "Annuler", style: "cancel" },
+                ],
+              );
+              return;
+            }
+
+            // ✅ Mettre à jour le nom du commerce si merchant
+            if (isMerchant && businessName.trim()) {
+              const { data: merchantData } = await supabase
+                .from("merchants")
+                .select("id")
+                .eq("user_id", loginData.user!.id)
+                .maybeSingle();
+              if (merchantData) {
+                await supabase
+                  .from("merchants")
+                  .update({
+                    business_name: businessName.trim(),
+                    category,
+                  })
+                  .eq("id", merchantData.id);
+              }
+            }
+
+            await supabase.auth.updateUser({ data: { role } });
+          } else {
+            throw authError;
           }
         } else {
-          // Vérifier qu'il n'existe pas déjà
-          const { data: existing } = await supabase
-            .from("customers")
-            .select("id")
-            .eq("user_id", userId)
-            .maybeSingle();
-
-          if (!existing) {
-            const { error: insertError } = await supabase
-              .from("customers")
-              .insert({
-                id: nanoid(),
-                user_id: userId,
-                first_name: firstName.trim(),
-                last_name: lastName.trim(),
-                email: email.trim(),
-                phone: phone || null,
-                tier: "bronze",
-                qr_code: qrCode,
-              });
-            if (insertError) throw insertError;
+          // ✅ Nouveau compte — mettre à jour le nom du commerce si merchant
+          if (isMerchant && businessName.trim()) {
+            // Attendre que le trigger crée le profil
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+            const { data: session } = await supabase.auth.getSession();
+            if (session.session) {
+              await supabase
+                .from("merchants")
+                .update({
+                  business_name: businessName.trim(),
+                  category,
+                })
+                .eq("user_id", session.session.user.id);
+            }
           }
         }
 
+        await AsyncStorage.setItem("@active_role", role ?? "customer");
         await completeOnboarding();
         router.replace(dest as any);
       } else {
-        // ── Mode téléphone → OTP ──
+        // Mode téléphone → OTP
         await sendPhoneOTP(phone.trim());
         setPhoneStep("otp");
         setErrors({});
       }
     } catch (e: any) {
-      const msg: string = e?.message ?? "";
-      if (
-        msg.includes("already registered") ||
-        msg.includes("already been registered")
-      ) {
-        Alert.alert("Erreur", "Cet email est déjà utilisé.");
-      } else {
-        Alert.alert("Erreur", msg || "Inscription échouée.");
-      }
+      Alert.alert("Erreur", e?.message || "Inscription échouée.");
     } finally {
       setLoading(false);
     }
@@ -185,7 +186,6 @@ export default function RegisterScreen() {
       setErrors({ otp: "Required" });
       return;
     }
-
     setLoading(true);
     try {
       const userData = isMerchant
@@ -198,6 +198,7 @@ export default function RegisterScreen() {
         userData,
         role ?? "customer",
       );
+      await AsyncStorage.setItem("@active_role", role ?? "customer");
       await completeOnboarding();
       router.replace(dest as any);
     } catch (e: any) {
@@ -224,9 +225,8 @@ export default function RegisterScreen() {
             onPress={() => setPhoneStep("form")}
             style={styles.backBtn}
           >
-            <Feather name="arrow-left" size={22} color="#0f0f0f" />
+            <Feather name="arrow-left" size={iconSize(22)} color="#0f0f0f" />
           </TouchableOpacity>
-
           <View style={styles.header}>
             <FideliioLogo size={52} />
             <Text
@@ -238,19 +238,16 @@ export default function RegisterScreen() {
               Vérification
             </Text>
             <Text
-              style={[
-                {
-                  color: "#6B7280",
-                  fontSize: 14,
-                  textAlign: "center",
-                  fontFamily: "Inter_400Regular",
-                },
-              ]}
+              style={{
+                color: "#6B7280",
+                fontSize: fs(14),
+                textAlign: "center",
+                fontFamily: "Inter_400Regular",
+              }}
             >
-              Code envoyé à {mode === "email" ? email : phone}
+              Code envoyé à {phone}
             </Text>
           </View>
-
           <Input
             label={t("auth.otp")}
             placeholder="123456"
@@ -260,7 +257,6 @@ export default function RegisterScreen() {
             leftIcon="shield"
             error={errors.otp}
           />
-
           <TouchableOpacity
             onPress={handleVerifyOtp}
             activeOpacity={0.88}
@@ -278,7 +274,6 @@ export default function RegisterScreen() {
               </Text>
             </LinearGradient>
           </TouchableOpacity>
-
           <TouchableOpacity
             onPress={async () => {
               try {
@@ -295,7 +290,7 @@ export default function RegisterScreen() {
                 {
                   color: accent,
                   fontFamily: "Inter_600SemiBold",
-                  fontSize: 14,
+                  fontSize: fs(14),
                 },
               ]}
             >
@@ -320,9 +315,8 @@ export default function RegisterScreen() {
         showsVerticalScrollIndicator={false}
       >
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Feather name="arrow-left" size={22} color="#0f0f0f" />
+          <Feather name="arrow-left" size={iconSize(22)} color="#0f0f0f" />
         </TouchableOpacity>
-
         <View style={styles.header}>
           <FideliioLogo size={52} />
           <Text
@@ -334,7 +328,6 @@ export default function RegisterScreen() {
             {isMerchant ? t("auth.registerMerchant") : t("auth.register")}
           </Text>
         </View>
-
         <View style={styles.row2}>
           <Input
             label={t("auth.firstName")}
@@ -355,7 +348,6 @@ export default function RegisterScreen() {
             containerStyle={{ flex: 1 }}
           />
         </View>
-
         <View style={[styles.tabRow, { borderBottomColor: "#E5E7EB" }]}>
           {(["email", "phone"] as const).map((m) => (
             <TouchableOpacity
@@ -387,7 +379,6 @@ export default function RegisterScreen() {
             </TouchableOpacity>
           ))}
         </View>
-
         {mode === "email" ? (
           <Input
             label={t("auth.email")}
@@ -410,7 +401,6 @@ export default function RegisterScreen() {
             error={errors.phone}
           />
         )}
-
         {mode === "email" && (
           <>
             <Input
@@ -437,7 +427,6 @@ export default function RegisterScreen() {
             />
           </>
         )}
-
         {isMerchant && (
           <>
             <Input
@@ -495,7 +484,6 @@ export default function RegisterScreen() {
             </View>
           </>
         )}
-
         <TouchableOpacity
           onPress={handleRegister}
           activeOpacity={0.88}
@@ -517,7 +505,6 @@ export default function RegisterScreen() {
             </Text>
           </LinearGradient>
         </TouchableOpacity>
-
         <View style={styles.dividerRow}>
           <View style={[styles.divider, { backgroundColor: "#E5E7EB" }]} />
           <Text
@@ -530,7 +517,6 @@ export default function RegisterScreen() {
           </Text>
           <View style={[styles.divider, { backgroundColor: "#E5E7EB" }]} />
         </View>
-
         <TouchableOpacity
           style={[styles.googleBtn, { borderRadius: colors.radius }]}
         >
@@ -539,7 +525,6 @@ export default function RegisterScreen() {
             {t("auth.google")}
           </Text>
         </TouchableOpacity>
-
         <TouchableOpacity
           onPress={() => router.back()}
           style={styles.loginLink}
@@ -566,17 +551,17 @@ const styles = StyleSheet.create({
   scroll: { padding: 24 },
   backBtn: { marginBottom: 16 },
   header: { alignItems: "center", gap: 12, marginBottom: 24 },
-  title: { fontSize: 22 },
+  title: { fontSize: fs(22) },
   row2: { flexDirection: "row", gap: 12 },
   tabRow: { flexDirection: "row", borderBottomWidth: 1, marginBottom: 16 },
   tab: { flex: 1, alignItems: "center", paddingBottom: 10 },
-  tabText: { fontSize: 15 },
-  catLabel: { fontSize: 13, marginBottom: 8 },
+  tabText: { fontSize: fs(15) },
+  catLabel: { fontSize: fs(13), marginBottom: 8 },
   catGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 },
   catBtn: { paddingHorizontal: 12, paddingVertical: 8 },
-  catText: { fontSize: 13 },
+  catText: { fontSize: fs(13) },
   ctaBtn: { paddingVertical: 16, alignItems: "center" },
-  ctaText: { color: "#fff", fontSize: 16 },
+  ctaText: { color: "#fff", fontSize: fs(16) },
   dividerRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -584,7 +569,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   divider: { flex: 1, height: 1 },
-  dividerText: { fontSize: 14 },
+  dividerText: { fontSize: fs(14) },
   googleBtn: {
     borderWidth: 1.5,
     borderColor: "#E5E7EB",
@@ -594,9 +579,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 10,
   },
-  googleIcon: { fontSize: 18, fontWeight: "bold", color: "#4285F4" },
-  googleText: { fontSize: 15, color: "#0f0f0f" },
+  googleIcon: { fontSize: fs(18), fontWeight: "bold", color: "#4285F4" },
+  googleText: { fontSize: fs(15), color: "#0f0f0f" },
   loginLink: { alignItems: "center", marginTop: 20, marginBottom: 20 },
-  loginText: { fontSize: 15 },
+  loginText: { fontSize: fs(15) },
   resendBtn: { alignItems: "center", marginTop: 20 },
 });

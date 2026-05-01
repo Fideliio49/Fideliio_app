@@ -9,6 +9,7 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
 } from "react-native";
+import { fs, iconSize } from "@/utils/responsive";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { Feather } from "@expo/vector-icons";
@@ -57,7 +58,7 @@ export default function ForgotScreen() {
         showsVerticalScrollIndicator={false}
       >
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Feather name="arrow-left" size={22} color="#0f0f0f" />
+          <Feather name="arrow-left" size={iconSize(22)} color="#0f0f0f" />
         </TouchableOpacity>
 
         <View style={styles.center}>
@@ -73,7 +74,7 @@ export default function ForgotScreen() {
         {sent ? (
           <View style={styles.successBox}>
             <View style={[styles.successIcon, { backgroundColor: colors.greenLight }]}>
-              <Feather name="check-circle" size={48} color={colors.green} />
+              <Feather name="check-circle" size={iconSize(48)} color={colors.green} />
             </View>
             <Text style={[styles.successTitle, { color: "#0f0f0f", fontFamily: "Inter_700Bold" }]}>
               Email envoyé !
@@ -82,7 +83,7 @@ export default function ForgotScreen() {
               Vérifiez votre boîte mail ou votre téléphone.
             </Text>
             <TouchableOpacity onPress={() => router.back()}>
-              <Text style={[{ color: accent, fontFamily: "Inter_600SemiBold", fontSize: 15, marginTop: 16 }]}>
+              <Text style={[{ color: accent, fontFamily: "Inter_600SemiBold", fontSize: fs(15), marginTop: 16 }]}>
                 {t("auth.back")}
               </Text>
             </TouchableOpacity>
@@ -122,12 +123,12 @@ const styles = StyleSheet.create({
   scroll: { padding: 24 },
   backBtn: { marginBottom: 20 },
   center: { alignItems: "center", gap: 12, marginBottom: 32 },
-  title: { fontSize: 22 },
-  sub: { fontSize: 14, textAlign: "center", lineHeight: 20 },
+  title: { fontSize: fs(22) },
+  sub: { fontSize: fs(14), textAlign: "center", lineHeight: 20 },
   ctaBtn: { paddingVertical: 16, alignItems: "center", marginTop: 8 },
-  ctaText: { color: "#fff", fontSize: 16 },
+  ctaText: { color: "#fff", fontSize: fs(16) },
   successBox: { alignItems: "center", gap: 10 },
   successIcon: { width: 88, height: 88, borderRadius: 44, alignItems: "center", justifyContent: "center" },
-  successTitle: { fontSize: 22 },
-  successSub: { fontSize: 14, textAlign: "center" },
+  successTitle: { fontSize: fs(22) },
+  successSub: { fontSize: fs(14), textAlign: "center" },
 });

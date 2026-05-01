@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useColors } from "@/hooks/useColors";
+import { fs } from "@/utils/responsive";
 
 interface ButtonProps {
   title: string;
@@ -58,9 +59,9 @@ export function Button({
 
   const labelStyle: TextStyle = {
     fontFamily: "Inter_600SemiBold",
-    ...(size === "sm" ? { fontSize: 13 } : {}),
-    ...(size === "md" ? { fontSize: 15 } : {}),
-    ...(size === "lg" ? { fontSize: 17 } : {}),
+    ...(size === "sm" ? { fontSize: fs(13) } : {}),
+    ...(size === "md" ? { fontSize: fs(15) } : {}),
+    ...(size === "lg" ? { fontSize: fs(17) } : {}),
     ...(variant === "primary" ? { color: colors.primaryForeground } : {}),
     ...(variant === "secondary" ? { color: colors.secondaryForeground } : {}),
     ...(variant === "outline" ? { color: colors.primary } : {}),
@@ -81,7 +82,7 @@ export function Button({
           color={variant === "outline" || variant === "ghost" ? colors.primary : "#fff"}
         />
       ) : (
-        <Text style={[labelStyle, textStyle]}>{title}</Text>
+        <Text allowFontScaling={false} style={[labelStyle, textStyle]}>{title}</Text>
       )}
     </TouchableOpacity>
   );

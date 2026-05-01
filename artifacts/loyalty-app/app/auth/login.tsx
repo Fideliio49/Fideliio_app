@@ -1,14 +1,9 @@
 import React, { useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Alert,
-  Platform,
-  Keyboard,
+  View, Text, StyleSheet, TouchableOpacity, Alert, Platform, Keyboard,
 } from "react-native";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { fs } from "@/utils/responsive";
+import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -18,89 +13,94 @@ import { useApp } from "@/context/AppContext";
 import { Input } from "@/components/ui/Input";
 import { FideliioLogo } from "@/components/FideliioLogo";
 import { supabase } from "@/lib/supabase";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export default function LoginScreen() {
   const colors = useColors();
   const { t } = useTranslation();
   const router = useRouter();
-  const { role } = useLocalSearchParams<{ role: "customer" | "merchant" }>();
   const { completeOnboarding } = useApp();
 
-  const isMerchant = role === "merchant";
-  const accent = isMerchant ? colors.blue : colors.coral;
-  const gradientColors: [string, string] = isMerchant
-    ? ["#2C3E8C", "#00B4D8"]
-    : ["#FF6B6B", "#FF8E53"];
-
-  const [mode, setMode] = useState<"email" | "phone">("email");
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [inputMode, setInputMode] = useState<"email" | "phone">("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [phone, setPhone] = useState("");
-  const [otp, setOtp] = useState("");
-  const [otpSent, setOtpSent] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  const [confirmPw, setConfirmPw] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [showConfirmPw, setShowConfirmPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const dest = isMerchant ? "/(merchant)/home" : "/(customer)/home";
-
-  async function handleSendOtp() {
-    if (!phone.trim()) { setErrors({ phone: "Required" }); return; }
-    setLoading(true);
-    try {
-      const formatted = phone.trim().startsWith("+") ? phone.trim() : `+${phone.trim()}`;
-      const { error } = await supabase.auth.signInWithOtp({
-        phone: formatted,
-        options: { shouldCreateUser: false },
-      });
-      if (error) throw error;
-      setOtpSent(true);
-      setErrors({});
-    } catch (e: any) {
-      Alert.alert("Erreur", e.message ?? "Impossible d'envoyer le code.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleLogin() {
+  async function handleSubmit() {
     const errs: Record<string, string> = {};
-    if (mode === "email") {
-      if (!email.trim()) errs.email = "Required";
-      if (!password.trim()) errs.password = "Required";
-    } else {
-      if (!phone.trim()) errs.phone = "Required";
-      if (otpSent && !otp.trim()) errs.otp = "Required";
+    if (!email.trim()) errs.email = t("auth.atLeastOne");
+    if (!password.trim()) errs.password = "Required";
+    if (mode === "register") {
+      if (!firstName.trim()) errs.firstName = "Required";
+      if (!lastName.trim()) errs.lastName = "Required";
+      if (password.length < 6) errs.password = "Au moins 6 caractères";
+      if (password !== confirmPw) errs.confirmPw = t("auth.passwordsMatch");
     }
     if (Object.keys(errs).length) { setErrors(errs); return; }
 
     setLoading(true);
     try {
-      if (mode === "email") {
+      if (mode === "login") {
         const { error } = await supabase.auth.signInWithPassword({
+          email: email.trim(), password,
+        });
+        if (error) throw error;
+
+        // ✅ Vérifier si l'utilisateur a déjà un rôle actif
+        const storedRole = await AsyncStorage.getItem("@active_role");
+        await completeOnboarding();
+
+        if (storedRole) {
+          // Connexion existante → aller directement
+          router.replace(storedRole === "merchant" ? "/(merchant)/home" : "/(customer)/home");
+        } else {
+          // Première connexion → choisir le rôle
+          router.replace("/auth/role");
+        }
+      } else {
+        // Inscription
+        const { error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
+          options: {
+            data: {
+              first_name: firstName.trim(),
+              last_name: lastName.trim(),
+              firstName: firstName.trim(),
+              lastName: lastName.trim(),
+            },
+          },
         });
-        if (error) throw error;
-      } else {
-        const formatted = phone.trim().startsWith("+") ? phone.trim() : `+${phone.trim()}`;
-        const { error } = await supabase.auth.verifyOtp({
-          phone: formatted,
-          token: otp.trim(),
-          type: "sms",
-        });
-        if (error) throw error;
+        if (error) {
+          if (error.message.includes("already registered") || error.message.includes("User already registered")) {
+            Alert.alert(
+              "Email déjà utilisé",
+              "Ce compte existe déjà. Connectez-vous.",
+              [{ text: "Se connecter", onPress: () => setMode("login") }, { text: "Annuler", style: "cancel" }]
+            );
+            return;
+          }
+          throw error;
+        }
+        await completeOnboarding();
+        // Nouvel utilisateur → choisir son rôle
+        router.replace("/auth/role");
       }
-      await completeOnboarding();
-      router.replace(dest as any);
     } catch (e: any) {
-      const msg: string = e?.message ?? "";
+      const msg = e?.message ?? "";
       if (msg.includes("Invalid login credentials")) {
         Alert.alert("Erreur", "Email ou mot de passe incorrect.");
       } else if (msg.includes("Email not confirmed")) {
         Alert.alert("Erreur", "Veuillez confirmer votre email.");
       } else {
-        Alert.alert("Erreur", msg || "Connexion échouée. Vérifiez vos identifiants.");
+        Alert.alert("Erreur", msg || "Une erreur est survenue.");
       }
     } finally {
       setLoading(false);
@@ -116,143 +116,67 @@ export default function LoginScreen() {
         bottomOffset={20}
         showsVerticalScrollIndicator={false}
       >
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Feather name="arrow-left" size={22} color={colors.foreground} />
-        </TouchableOpacity>
-
+        {/* Header */}
         <View style={styles.header}>
-          <FideliioLogo size={52} />
-          <Text style={[styles.title, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
-            {t("auth.login")}
+          <FideliioLogo size={60} />
+          <Text style={[styles.appName, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>Fideliio</Text>
+          <Text style={[styles.tagline, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
+            {t("splash.tagline")}
           </Text>
         </View>
 
-        <View style={[styles.tabRow, { borderBottomColor: colors.border }]}>
-          {(["email", "phone"] as const).map((m) => (
-            <TouchableOpacity
-              key={m}
-              onPress={() => { setMode(m); setErrors({}); setOtpSent(false); setOtp(""); }}
-              style={[styles.tab, { borderBottomColor: mode === m ? accent : "transparent", borderBottomWidth: 2 }]}
-            >
-              <Text style={[styles.tabText, {
-                color: mode === m ? accent : colors.mutedForeground,
-                fontFamily: mode === m ? "Inter_600SemiBold" : "Inter_400Regular",
-              }]}>
-                {m === "email" ? t("auth.email") : t("auth.phone")}
+        {/* Toggle login / register */}
+        <View style={[styles.toggleRow, { backgroundColor: colors.muted, borderRadius: 12 }]}>
+          {(["login", "register"] as const).map((m) => (
+            <TouchableOpacity key={m} onPress={() => { setMode(m); setErrors({}); }}
+              style={[styles.toggleBtn, { backgroundColor: mode === m ? "#fff" : "transparent", borderRadius: 10, shadowColor: mode === m ? "#000" : "transparent", shadowOpacity: 0.08, shadowRadius: 4, elevation: mode === m ? 2 : 0 }]}>
+              <Text style={[styles.toggleText, { color: mode === m ? colors.foreground : colors.mutedForeground, fontFamily: mode === m ? "Inter_700Bold" : "Inter_400Regular" }]}>
+                {m === "login" ? t("auth.login") : t("auth.register")}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
 
+        {/* Form */}
         <View style={styles.form}>
-          {mode === "email" ? (
-            <>
-              <Input
-                label={t("auth.email")}
-                placeholder="email@exemple.com"
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                leftIcon="mail"
-                error={errors.email}
-              />
-              <Input
-                label={t("auth.password")}
-                placeholder="••••••••"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-                leftIcon="lock"
-                rightIcon={showPassword ? "eye-off" : "eye"}
-                onRightIconPress={() => setShowPassword((v) => !v)}
-                error={errors.password}
-              />
-              <TouchableOpacity
-                onPress={() => router.push(`/auth/forgot?role=${role}`)}
-                style={styles.forgotBtn}
-              >
-                <Text style={[styles.forgotText, { color: accent, fontFamily: "Inter_400Regular" }]}>
-                  {t("auth.forgotPassword")}
-                </Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              <Input
-                label={t("auth.phone")}
-                placeholder="+212 6XX XXX XXX"
-                value={phone}
-                onChangeText={setPhone}
-                keyboardType="phone-pad"
-                leftIcon="smartphone"
-                error={errors.phone}
-              />
-              {!otpSent ? (
-                <TouchableOpacity
-                  onPress={handleSendOtp}
-                  disabled={loading}
-                  style={[styles.otpBtn, { borderColor: accent, borderRadius: colors.radius }]}
-                >
-                  <Text style={[{ color: accent, fontFamily: "Inter_600SemiBold", fontSize: 14 }]}>
-                    {loading ? t("common.loading") : t("auth.sendOtp")}
-                  </Text>
-                </TouchableOpacity>
-              ) : (
-                <Input
-                  label={t("auth.otp")}
-                  placeholder="123456"
-                  value={otp}
-                  onChangeText={setOtp}
-                  keyboardType="number-pad"
-                  leftIcon="shield"
-                  error={errors.otp}
-                />
-              )}
-            </>
+          {mode === "register" && (
+            <View style={styles.row2}>
+              <Input label={t("auth.firstName")} placeholder={t("auth.firstName")} value={firstName} onChangeText={setFirstName} leftIcon="user" error={errors.firstName} containerStyle={{ flex: 1 }} />
+              <Input label={t("auth.lastName")} placeholder={t("auth.lastName")} value={lastName} onChangeText={setLastName} leftIcon="user" error={errors.lastName} containerStyle={{ flex: 1 }} />
+            </View>
+          )}
+          <Input label={t("auth.email")} placeholder="email@exemple.com" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" leftIcon="mail" error={errors.email} />
+          <Input label={t("auth.password")} placeholder="••••••••" value={password} onChangeText={setPassword} secureTextEntry={!showPw} leftIcon="lock" rightIcon={showPw ? "eye-off" : "eye"} onRightIconPress={() => setShowPw(v => !v)} error={errors.password} />
+          {mode === "register" && (
+            <Input label={t("auth.confirmPassword")} placeholder="••••••••" value={confirmPw} onChangeText={setConfirmPw} secureTextEntry={!showConfirmPw} leftIcon="lock" rightIcon={showConfirmPw ? "eye-off" : "eye"} onRightIconPress={() => setShowConfirmPw(v => !v)} error={errors.confirmPw} />
+          )}
+          {mode === "login" && (
+            <TouchableOpacity onPress={() => router.push("/auth/forgot")} style={styles.forgotBtn}>
+              <Text style={[styles.forgotText, { color: colors.primary, fontFamily: "Inter_400Regular" }]}>{t("auth.forgotPassword")}</Text>
+            </TouchableOpacity>
           )}
         </View>
 
-        {(mode === "email" || otpSent) && (
-          <TouchableOpacity onPress={handleLogin} activeOpacity={0.88} disabled={loading}>
-            <LinearGradient
-              colors={gradientColors}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={[styles.ctaBtn, { borderRadius: colors.radius }]}
-            >
-              <Text style={[styles.ctaText, { fontFamily: "Inter_600SemiBold" }]}>
-                {loading ? t("common.loading") : t("auth.login")}
-              </Text>
-            </LinearGradient>
-          </TouchableOpacity>
-        )}
+        {/* CTA */}
+        <TouchableOpacity onPress={handleSubmit} activeOpacity={0.88} disabled={loading}>
+          <LinearGradient colors={["#C85A17", "#E67E22"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.ctaBtn, { borderRadius: colors.radius }]}>
+            <Text style={[styles.ctaText, { fontFamily: "Inter_700Bold" }]}>
+              {loading ? t("common.loading") : mode === "login" ? t("auth.login") : t("auth.register")}
+            </Text>
+          </LinearGradient>
+        </TouchableOpacity>
 
+        {/* Divider */}
         <View style={styles.dividerRow}>
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <Text style={[styles.dividerText, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
-            {t("common.or")}
-          </Text>
+          <Text style={[styles.dividerText, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>{t("common.or")}</Text>
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
         </View>
 
+        {/* Google */}
         <TouchableOpacity style={[styles.googleBtn, { borderColor: colors.border, borderRadius: colors.radius }]}>
           <Text style={styles.googleIcon}>G</Text>
-          <Text style={[styles.googleText, { color: colors.foreground, fontFamily: "Inter_500Medium" }]}>
-            {t("auth.google")}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={() => router.push(`/auth/register?role=${role}`)}
-          style={styles.registerLink}
-        >
-          <Text style={[styles.registerText, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
-            {t("auth.noAccount")}{" "}
-            <Text style={{ color: accent, fontFamily: "Inter_600SemiBold" }}>
-              {t("auth.signUp")}
-            </Text>
-          </Text>
+          <Text style={[styles.googleText, { color: colors.foreground, fontFamily: "Inter_500Medium" }]}>{t("auth.google")}</Text>
         </TouchableOpacity>
       </KeyboardAwareScrollView>
     </View>
@@ -262,31 +186,22 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scroll: { padding: 24 },
-  backBtn: { marginBottom: 16 },
-  header: { alignItems: "center", gap: 12, marginBottom: 28 },
-  title: { fontSize: 22 },
-  tabRow: { flexDirection: "row", borderBottomWidth: 1, marginBottom: 20 },
-  tab: { flex: 1, alignItems: "center", paddingBottom: 10 },
-  tabText: { fontSize: 15 },
-  form: {},
-  forgotBtn: { alignSelf: "flex-end", marginBottom: 16, marginTop: 4 },
-  forgotText: { fontSize: 14 },
-  otpBtn: { borderWidth: 1.5, paddingVertical: 13, alignItems: "center", marginBottom: 12 },
-  ctaBtn: { paddingVertical: 16, alignItems: "center", marginTop: 4 },
-  ctaText: { color: "#fff", fontSize: 16 },
+  header: { alignItems: "center", gap: 8, marginBottom: 32 },
+  appName: { fontSize: fs(28) },
+  tagline: { fontSize: fs(14) },
+  toggleRow: { flexDirection: "row", padding: 4, marginBottom: 24 },
+  toggleBtn: { flex: 1, paddingVertical: 10, alignItems: "center" },
+  toggleText: { fontSize: fs(15) },
+  form: { gap: 0 },
+  row2: { flexDirection: "row", gap: 12 },
+  forgotBtn: { alignSelf: "flex-end", marginBottom: 8, marginTop: 4 },
+  forgotText: { fontSize: fs(13) },
+  ctaBtn: { paddingVertical: 16, alignItems: "center", marginTop: 8 },
+  ctaText: { color: "#fff", fontSize: fs(16) },
   dividerRow: { flexDirection: "row", alignItems: "center", marginVertical: 20, gap: 12 },
   divider: { flex: 1, height: 1 },
-  dividerText: { fontSize: 14 },
-  googleBtn: {
-    borderWidth: 1.5,
-    paddingVertical: 14,
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 10,
-  },
-  googleIcon: { fontSize: 18, fontWeight: "bold", color: "#4285F4" },
-  googleText: { fontSize: 15 },
-  registerLink: { alignItems: "center", marginTop: 20, marginBottom: 16 },
-  registerText: { fontSize: 15 },
+  dividerText: { fontSize: fs(14) },
+  googleBtn: { borderWidth: 1.5, paddingVertical: 14, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 10 },
+  googleIcon: { fontSize: fs(18), fontWeight: "bold", color: "#4285F4" },
+  googleText: { fontSize: fs(15) },
 });

@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { useColors } from "@/hooks/useColors";
 import type { Transaction } from "@/context/DataContext";
+import { fs } from "@/utils/responsive";
 
 interface TransactionRowProps {
   transaction: Transaction;
@@ -27,7 +28,6 @@ export function TransactionRow({
   const isNegative = pts < 0;
   const isZero = pts === 0;
 
-  // ✅ Affichage correct : +500, -100, 0
   const ptsLabel = isZero ? "0" : isNegative ? `${pts}` : `+${pts}`;
   const ptsColor = isNegative
     ? "#E74C3C"
@@ -49,6 +49,7 @@ export function TransactionRow({
       <View style={[styles.dot, { backgroundColor: dotColor }]} />
       <View style={styles.info}>
         <Text
+          allowFontScaling={false}
           style={[
             styles.name,
             {
@@ -63,6 +64,7 @@ export function TransactionRow({
             : transaction.merchantName}
         </Text>
         <Text
+          allowFontScaling={false}
           style={[
             styles.date,
             {
@@ -76,6 +78,7 @@ export function TransactionRow({
         </Text>
       </View>
       <Text
+        allowFontScaling={false}
         style={[
           styles.points,
           { color: ptsColor, fontFamily: "Inter_700Bold" },
@@ -101,7 +104,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   info: { flex: 1, gap: 2 },
-  name: { fontSize: 14 },
-  date: { fontSize: 12 },
-  points: { fontSize: 15 },
+  name: { fontSize: fs(14) },
+  date: { fontSize: fs(12) },
+  points: { fontSize: fs(15) },
 });

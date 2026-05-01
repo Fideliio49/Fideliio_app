@@ -8,6 +8,7 @@ import { Platform, StyleSheet, View, useColorScheme } from "react-native";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { useTranslation } from "react-i18next";
+import { iconSize } from "@/utils/responsive";
 
 function NativeTabLayout() {
   const { t } = useTranslation();
@@ -81,7 +82,7 @@ function ClassicTabLayout() {
         options={{
           title: t("merchant.home"),
           tabBarIcon: ({ color }) => (
-            <Feather name="bar-chart-2" size={22} color={color} />
+            <Feather name="bar-chart-2" size={iconSize(22)} color={color} />
           ),
         }}
       />
@@ -90,7 +91,7 @@ function ClassicTabLayout() {
         options={{
           title: t("merchant.customers"),
           tabBarIcon: ({ color }) => (
-            <Feather name="users" size={22} color={color} />
+            <Feather name="users" size={iconSize(22)} color={color} />
           ),
         }}
       />
@@ -99,7 +100,7 @@ function ClassicTabLayout() {
         options={{
           title: t("merchant.scan"),
           tabBarIcon: ({ color }) => (
-            <Feather name="zap" size={22} color={color} />
+            <Feather name="zap" size={iconSize(22)} color={color} />
           ),
         }}
       />
@@ -108,7 +109,7 @@ function ClassicTabLayout() {
         options={{
           title: t("merchant.rewards"),
           tabBarIcon: ({ color }) => (
-            <Feather name="gift" size={22} color={color} />
+            <Feather name="gift" size={iconSize(22)} color={color} />
           ),
         }}
       />
@@ -117,7 +118,7 @@ function ClassicTabLayout() {
         options={{
           title: t("merchant.profile"),
           tabBarIcon: ({ color }) => (
-            <Feather name="user" size={22} color={color} />
+            <Feather name="user" size={iconSize(22)} color={color} />
           ),
         }}
       />

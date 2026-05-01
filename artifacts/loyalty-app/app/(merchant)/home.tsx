@@ -7,6 +7,7 @@ import {
   Platform,
   StatusBar,
 } from "react-native";
+import { fs } from "@/utils/responsive";
 import { useFocusEffect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useTranslation } from "react-i18next";
@@ -226,12 +227,12 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 32,
     overflow: "hidden",
   },
-  greeting: { color: "rgba(255,255,255,0.85)", fontSize: 16 },
-  bizName: { color: "#fff", fontSize: 28 },
+  greeting: { color: "rgba(255,255,255,0.85)", fontSize: fs(16) },
+  bizName: { color: "#fff", fontSize: fs(28) },
   stats: { padding: 16, gap: 12 },
   statsRow: { gap: 12 },
   section: { paddingHorizontal: 16, marginBottom: 24 },
-  sectionTitle: { fontSize: 17, marginBottom: 12 },
+  sectionTitle: { fontSize: fs(17), marginBottom: 12 },
   empty: { padding: 32, alignItems: "center", gap: 10 },
-  emptyText: { fontSize: 14 },
+  emptyText: { fontSize: fs(14) },
 });

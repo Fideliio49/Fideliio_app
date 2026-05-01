@@ -2,24 +2,19 @@ import { Redirect } from "expo-router";
 import { useApp } from "@/context/AppContext";
 
 export default function Index() {
-  const { user, isOnboarded } = useApp();
+  const { user, isOnboarded, activeRole } = useApp();
 
-  // ── Si l'user est connecté, on le redirige directement
-  // peu importe si isOnboarded est true ou false
-  // (la session Supabase est persistée via SecureStore/localStorage)
   if (user) {
-    if (user.role === "merchant") {
-      return <Redirect href="/(merchant)/home" />;
-    }
-    return <Redirect href="/(customer)/home" />;
+    // ✅ Utilisateur connecté avec un rôle actif → espace correspondant
+    if (activeRole === "merchant") return <Redirect href="/(merchant)/home" />;
+    if (activeRole === "customer") return <Redirect href="/(customer)/home" />;
+    // Connecté mais pas de rôle → choisir le rôle
+    return <Redirect href="/auth/role" />;
   }
 
-  // ── Pas de session active ──
-  // Si pas encore onboardé → onboarding
-  if (!isOnboarded) {
-    return <Redirect href="/onboarding/language" />;
-  }
+  // Pas connecté
+  if (!isOnboarded) return <Redirect href="/onboarding/language" />;
 
-  // ── Onboardé mais pas connecté → login
-  return <Redirect href="/auth/role" />;
+  // ✅ Onboardé mais pas connecté → page de login universelle
+  return <Redirect href="/auth/login" />;
 }

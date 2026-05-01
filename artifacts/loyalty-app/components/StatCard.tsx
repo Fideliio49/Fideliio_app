@@ -3,6 +3,7 @@ import { View, Text, StyleSheet } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
 import { Card } from "./ui/Card";
+import { fs, iconSize } from "@/utils/responsive";
 
 interface StatCardProps {
   icon: keyof typeof Feather.glyphMap;
@@ -19,12 +20,18 @@ export function StatCard({ icon, value, label, color, valueColor }: StatCardProp
   return (
     <Card style={styles.card} padding={14}>
       <View style={[styles.iconBox, { backgroundColor: accent + "18", borderRadius: 10 }]}>
-        <Feather name={icon} size={18} color={accent} />
+        <Feather name={icon} size={iconSize(18)} color={accent} />
       </View>
-      <Text style={[styles.value, { color: valueColor ?? colors.foreground, fontFamily: "Inter_700Bold" }]}>
+      <Text
+        allowFontScaling={false}
+        style={[styles.value, { color: valueColor ?? colors.foreground, fontFamily: "Inter_700Bold" }]}
+      >
         {value}
       </Text>
-      <Text style={[styles.label, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
+      <Text
+        allowFontScaling={false}
+        style={[styles.label, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}
+      >
         {label}
       </Text>
     </Card>
@@ -44,9 +51,9 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   value: {
-    fontSize: 20,
+    fontSize: fs(20),
   },
   label: {
-    fontSize: 12,
+    fontSize: fs(12),
   },
 });

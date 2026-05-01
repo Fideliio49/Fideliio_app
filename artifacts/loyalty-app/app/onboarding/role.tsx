@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   Platform,
 } from "react-native";
+import { fs } from "@/utils/responsive";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { LinearGradient } from "expo-linear-gradient";
@@ -97,11 +98,11 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   title: {
-    fontSize: 22,
+    fontSize: fs(22),
     marginTop: 14,
   },
   sub: {
-    fontSize: 13,
+    fontSize: fs(13),
   },
   cards: {
     flexDirection: "row",
@@ -123,16 +124,16 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   cardIcon: {
-    fontSize: 32,
+    fontSize: fs(32),
     marginBottom: 4,
   },
   cardTitle: {
     color: "#fff",
-    fontSize: 15,
+    fontSize: fs(15),
   },
   cardSub: {
     color: "rgba(255,255,255,0.85)",
-    fontSize: 11,
+    fontSize: fs(11),
     lineHeight: 16,
   },
 });

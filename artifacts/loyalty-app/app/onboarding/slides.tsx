@@ -10,13 +10,14 @@ import {
   Platform,
   ListRenderItemInfo,
 } from "react-native";
+import { fs } from "@/utils/responsive";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { LinearGradient } from "expo-linear-gradient";
 import { FideliioLogo } from "@/components/FideliioLogo";
 import { useColors } from "@/hooks/useColors";
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 const SLIDES = [
   {
@@ -25,7 +26,10 @@ const SLIDES = [
     subtitle: "onboarding.slide1.subtitle",
     mainImage: "https://picsum.photos/seed/shopping42/800/360",
     grid: [
-      { type: "image" as const, src: "https://picsum.photos/seed/loyalty10/400/200" },
+      {
+        type: "image" as const,
+        src: "https://picsum.photos/seed/loyalty10/400/200",
+      },
       { type: "card" as const, icons: "💳", label: "Points" },
     ],
   },
@@ -34,7 +38,10 @@ const SLIDES = [
     title: "onboarding.slide2.title",
     subtitle: "onboarding.slide2.subtitle",
     grid: [
-      { type: "image" as const, src: "https://picsum.photos/seed/qrscan20/400/240" },
+      {
+        type: "image" as const,
+        src: "https://picsum.photos/seed/qrscan20/400/240",
+      },
       { type: "card" as const, icons: "🪙", label: "QR" },
     ],
     bottomImage: "https://picsum.photos/seed/merchant55/800/200",
@@ -45,7 +52,10 @@ const SLIDES = [
     subtitle: "onboarding.slide3.subtitle",
     mainImage: "https://picsum.photos/seed/couch30/800/200",
     grid: [
-      { type: "image" as const, src: "https://picsum.photos/seed/shop77/400/240" },
+      {
+        type: "image" as const,
+        src: "https://picsum.photos/seed/shop77/400/240",
+      },
       { type: "card" as const, icons: "🛍️", label: "⭐⭐⭐" },
     ],
   },
@@ -60,9 +70,10 @@ export default function OnboardingSlides() {
 
   const isLast = currentIndex === SLIDES.length - 1;
 
+  // ✅ Redirige vers login universel (plus vers /onboarding/role)
   function handleNext() {
     if (isLast) {
-      router.replace("/onboarding/role");
+      router.replace("/auth/login");
     } else {
       const next = currentIndex + 1;
       flatRef.current?.scrollToIndex({ index: next, animated: true });
@@ -71,16 +82,16 @@ export default function OnboardingSlides() {
   }
 
   function handleSkip() {
-    router.replace("/onboarding/role");
+    router.replace("/auth/login");
   }
 
   const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
-    if (viewableItems.length > 0) {
-      setCurrentIndex(viewableItems[0].index ?? 0);
-    }
+    if (viewableItems.length > 0) setCurrentIndex(viewableItems[0].index ?? 0);
   }).current;
 
-  const viewabilityConfig = useRef({ viewAreaCoveragePercentThreshold: 50 }).current;
+  const viewabilityConfig = useRef({
+    viewAreaCoveragePercentThreshold: 50,
+  }).current;
 
   function renderSlide({ item }: ListRenderItemInfo<(typeof SLIDES)[0]>) {
     return (
@@ -93,33 +104,53 @@ export default function OnboardingSlides() {
           <Text style={[styles.slideTitle, { fontFamily: "Inter_700Bold" }]}>
             {t(item.title as any)}
           </Text>
-          <Text style={[styles.slideSubtitle, { fontFamily: "Inter_400Regular" }]}>
+          <Text
+            style={[styles.slideSubtitle, { fontFamily: "Inter_400Regular" }]}
+          >
             {t(item.subtitle as any)}
           </Text>
         </LinearGradient>
-
         <View style={styles.slideCard}>
           {item.mainImage && (
-            <Image source={{ uri: item.mainImage }} style={styles.fullWidthImg} resizeMode="cover" />
+            <Image
+              source={{ uri: item.mainImage }}
+              style={styles.fullWidthImg}
+              resizeMode="cover"
+            />
           )}
           <View style={styles.twoCards}>
             {item.grid.map((g, i) =>
               g.type === "image" ? (
-                <Image key={i} source={{ uri: g.src }} style={styles.halfImg} resizeMode="cover" />
+                <Image
+                  key={i}
+                  source={{ uri: g.src }}
+                  style={styles.halfImg}
+                  resizeMode="cover"
+                />
               ) : (
                 <LinearGradient
                   key={i}
-                  colors={i === 0 ? [colors.coral, colors.orange] : [colors.blue, colors.teal]}
+                  colors={
+                    i === 0
+                      ? [colors.coral, colors.orange]
+                      : [colors.blue, colors.teal]
+                  }
                   style={styles.illustCard}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
                 >
                   <Text style={styles.illustIcon}>{g.icons}</Text>
                   <Text style={styles.illustLabel}>{g.label}</Text>
                 </LinearGradient>
-              )
+              ),
             )}
           </View>
           {item.bottomImage && (
-            <Image source={{ uri: item.bottomImage }} style={styles.fullWidthImg} resizeMode="cover" />
+            <Image
+              source={{ uri: item.bottomImage }}
+              style={styles.fullWidthImg}
+              resizeMode="cover"
+            />
           )}
         </View>
       </View>
@@ -128,8 +159,12 @@ export default function OnboardingSlides() {
 
   return (
     <View style={[styles.container, { backgroundColor: "#fff" }]}>
-      {/* Progress bar */}
-      <View style={[styles.progress, { paddingTop: Platform.OS === "web" ? 67 : 52 }]}>
+      <View
+        style={[
+          styles.progress,
+          { paddingTop: Platform.OS === "web" ? 67 : 52 },
+        ]}
+      >
         {SLIDES.map((_, i) => (
           <View
             key={i}
@@ -145,8 +180,6 @@ export default function OnboardingSlides() {
           />
         ))}
       </View>
-
-      {/* Slides */}
       <FlatList
         ref={flatRef}
         data={SLIDES}
@@ -166,17 +199,32 @@ export default function OnboardingSlides() {
         })}
         style={{ flex: 1 }}
       />
-
-      {/* Buttons */}
-      <View style={[styles.buttons, { paddingBottom: Platform.OS === "web" ? 34 : 24 }]}>
-        <TouchableOpacity onPress={handleSkip} style={styles.skipBtn} activeOpacity={0.7}>
-          <Text style={[styles.skipText, { color: colors.mutedForeground, fontFamily: "Inter_500Medium" }]}>
+      <View
+        style={[
+          styles.buttons,
+          { paddingBottom: Platform.OS === "web" ? 34 : 24 },
+        ]}
+      >
+        <TouchableOpacity
+          onPress={handleSkip}
+          style={styles.skipBtn}
+          activeOpacity={0.7}
+        >
+          <Text
+            style={[
+              styles.skipText,
+              { color: colors.mutedForeground, fontFamily: "Inter_500Medium" },
+            ]}
+          >
             {t("onboarding.skip")}
           </Text>
         </TouchableOpacity>
-
         {isLast ? (
-          <TouchableOpacity onPress={handleNext} activeOpacity={0.85} style={{ flex: 1 }}>
+          <TouchableOpacity
+            onPress={handleNext}
+            activeOpacity={0.85}
+            style={{ flex: 1 }}
+          >
             <LinearGradient
               colors={[colors.green, "#00A87A"]}
               style={styles.nextBtnFull}
@@ -196,7 +244,9 @@ export default function OnboardingSlides() {
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
             >
-              <Text style={[styles.nextText, { fontFamily: "Inter_600SemiBold" }]}>
+              <Text
+                style={[styles.nextText, { fontFamily: "Inter_600SemiBold" }]}
+              >
                 {t("onboarding.next")}
               </Text>
             </LinearGradient>
@@ -216,9 +266,7 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   dot: {},
-  slide: {
-    flex: 1,
-  },
+  slide: { flex: 1 },
   slideTop: {
     paddingTop: 18,
     paddingHorizontal: 24,
@@ -226,14 +274,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
-  slideTitle: {
-    color: "#fff",
-    fontSize: 22,
-    textAlign: "center",
-  },
+  slideTitle: { color: "#fff", fontSize: fs(22), textAlign: "center" },
   slideSubtitle: {
     color: "rgba(255,255,255,0.82)",
-    fontSize: 14,
+    fontSize: fs(14),
     textAlign: "center",
     lineHeight: 20,
   },
@@ -246,22 +290,9 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 10,
   },
-  fullWidthImg: {
-    width: "100%",
-    height: 150,
-    borderRadius: 16,
-  },
-  twoCards: {
-    flexDirection: "row",
-    gap: 10,
-    flex: 1,
-  },
-  halfImg: {
-    flex: 1,
-    height: "100%",
-    minHeight: 100,
-    borderRadius: 16,
-  },
+  fullWidthImg: { width: "100%", height: 150, borderRadius: 16 },
+  twoCards: { flexDirection: "row", gap: 10, flex: 1 },
+  halfImg: { flex: 1, height: "100%", minHeight: 100, borderRadius: 16 },
   illustCard: {
     flex: 1,
     borderRadius: 16,
@@ -271,8 +302,8 @@ const styles = StyleSheet.create({
     padding: 12,
     minHeight: 100,
   },
-  illustIcon: { fontSize: 26 },
-  illustLabel: { color: "#fff", fontSize: 12, fontWeight: "bold" },
+  illustIcon: { fontSize: fs(26) },
+  illustLabel: { color: "#fff", fontSize: fs(12), fontWeight: "bold" },
   buttons: {
     flexDirection: "row",
     alignItems: "center",
@@ -284,8 +315,8 @@ const styles = StyleSheet.create({
     borderTopColor: "#F3F4F6",
   },
   skipBtn: { paddingHorizontal: 4, paddingVertical: 14 },
-  skipText: { fontSize: 15 },
+  skipText: { fontSize: fs(15) },
   nextBtn: { paddingHorizontal: 24, paddingVertical: 14, borderRadius: 99 },
   nextBtnFull: { paddingVertical: 16, borderRadius: 99, alignItems: "center" },
-  nextText: { color: "#fff", fontSize: 16 },
+  nextText: { color: "#fff", fontSize: fs(16) },
 });

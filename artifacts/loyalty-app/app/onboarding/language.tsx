@@ -13,6 +13,7 @@ import { useColors } from "@/hooks/useColors";
 import { useApp, Language } from "@/context/AppContext";
 import { Button } from "@/components/ui/Button";
 import { SplashAnimation } from "@/components/SplashAnimation";
+import { fs } from "@/utils/responsive";
 
 const LANGUAGES: { code: Language; label: string }[] = [
   { code: "fr", label: "Français" },
@@ -37,15 +38,15 @@ export default function LanguageScreen() {
         colors={["#1a1a6e", "#2C3E8C", "#1a5276"]}
         style={styles.header}
       >
-        <Text style={[styles.appName, { fontFamily: "Inter_700Bold" }]}>Fideliio</Text>
+        <Text allowFontScaling={false} style={[styles.appName, { fontFamily: "Inter_700Bold" }]}>Fideliio</Text>
         <SplashAnimation />
-        <Text style={[styles.tagline, { fontFamily: "Inter_400Regular" }]}>
+        <Text allowFontScaling={false} style={[styles.tagline, { fontFamily: "Inter_400Regular" }]}>
           {t("splash.tagline")}
         </Text>
       </LinearGradient>
 
       <View style={styles.content}>
-        <Text style={[styles.title, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
+        <Text allowFontScaling={false} style={[styles.title, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
           {t("language.select")}
         </Text>
 
@@ -68,6 +69,7 @@ export default function LanguageScreen() {
                 ]}
               >
                 <Text
+                  allowFontScaling={false}
                   style={[
                     styles.langNative,
                     {
@@ -108,12 +110,12 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   appName: {
-    fontSize: 28,
+    fontSize: fs(28),
     color: "#fff",
     letterSpacing: -0.5,
   },
   tagline: {
-    fontSize: 14,
+    fontSize: fs(14),
     color: "rgba(255,255,255,0.75)",
     marginTop: 4,
   },
@@ -123,7 +125,7 @@ const styles = StyleSheet.create({
     paddingTop: 28,
   },
   title: {
-    fontSize: 20,
+    fontSize: fs(20),
     marginBottom: 16,
     textAlign: "center",
   },
@@ -138,7 +140,7 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   langNative: {
-    fontSize: 17,
+    fontSize: fs(17),
     flex: 1,
   },
   checkDot: {

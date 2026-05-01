@@ -1,6 +1,7 @@
 import React from "react";
 import { View, Text, StyleSheet, ViewStyle } from "react-native";
 import { useColors } from "@/hooks/useColors";
+import { fs } from "@/utils/responsive";
 
 interface BadgeProps {
   label: string;
@@ -27,7 +28,10 @@ export function Badge({ label, variant = "default", style }: BadgeProps) {
 
   return (
     <View style={[styles.badge, { backgroundColor: bgColor, borderRadius: 20 }, style]}>
-      <Text style={[styles.label, { color: textColor, fontFamily: "Inter_500Medium" }]}>
+      <Text
+        allowFontScaling={false}
+        style={[styles.label, { color: textColor, fontFamily: "Inter_500Medium" }]}
+      >
         {label}
       </Text>
     </View>
@@ -41,6 +45,6 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
   label: {
-    fontSize: 12,
+    fontSize: fs(12),
   },
 });

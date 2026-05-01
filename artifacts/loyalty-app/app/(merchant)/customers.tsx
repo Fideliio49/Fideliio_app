@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
   TouchableWithoutFeedback,
 } from "react-native";
+import { fs, iconSize } from "@/utils/responsive";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
@@ -372,7 +373,7 @@ export default function MerchantCustomersScreen() {
                           },
                         ]}
                       >
-                        <Feather name="gift" size={12} color="#F9A602" />
+                        <Feather name="gift" size={iconSize(12)} color="#F9A602" />
                         <Text
                           style={[
                             styles.rewardReadyText,
@@ -399,7 +400,7 @@ export default function MerchantCustomersScreen() {
                       },
                     ]}
                   >
-                    <Feather name="edit-3" size={16} color={colors.primary} />
+                    <Feather name="edit-3" size={iconSize(16)} color={colors.primary} />
                   </TouchableOpacity>
                 </View>
               </Card>
@@ -408,7 +409,7 @@ export default function MerchantCustomersScreen() {
           contentContainerStyle={[styles.list, { paddingBottom: 100 }]}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Feather name="users" size={40} color={colors.mutedForeground} />
+              <Feather name="users" size={iconSize(40)} color={colors.mutedForeground} />
               <Text
                 style={[
                   styles.emptyText,
@@ -513,7 +514,7 @@ export default function MerchantCustomersScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { paddingHorizontal: 20, borderBottomWidth: 1 },
-  title: { fontSize: 24 },
+  title: { fontSize: fs(24) },
   list: { padding: 16 },
   customerCard: { marginBottom: 10 },
   row: { alignItems: "flex-start", gap: 12 },
@@ -525,25 +526,25 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginTop: 2,
   },
-  avatarText: { fontSize: 18 },
+  avatarText: { fontSize: fs(18) },
   info: { flex: 1, gap: 4 },
   nameRow: { alignItems: "center", gap: 8 },
-  custName: { fontSize: 15 },
-  custPhone: { fontSize: 12 },
+  custName: { fontSize: fs(15) },
+  custPhone: { fontSize: fs(12) },
   tierRow: { alignItems: "center", gap: 8, marginTop: 2 },
-  points: { fontSize: 14 },
-  visits: { fontSize: 12 },
+  points: { fontSize: fs(14) },
+  visits: { fontSize: fs(12) },
   urgentBadge: {
     backgroundColor: "rgba(249,166,2,0.15)",
     borderRadius: 99,
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
-  urgentText: { fontSize: 12 },
+  urgentText: { fontSize: fs(12) },
   progressSection: { marginTop: 6, gap: 4 },
   progressLabelRow: { justifyContent: "space-between", alignItems: "center" },
-  progressLabel: { fontSize: 11 },
-  progressPct: { fontSize: 11 },
+  progressLabel: { fontSize: fs(11) },
+  progressPct: { fontSize: fs(11) },
   progressTrack: { height: 5, borderRadius: 99, overflow: "hidden" },
   progressFill: { height: 5, borderRadius: 99 },
   rewardReady: {
@@ -555,17 +556,17 @@ const styles = StyleSheet.create({
     borderRadius: 99,
     alignSelf: "flex-start",
   },
-  rewardReadyText: { color: "#F9A602", fontSize: 11 },
+  rewardReadyText: { color: "#F9A602", fontSize: fs(11) },
   adjustBtn: { padding: 10, marginTop: 2 },
   empty: { alignItems: "center", paddingTop: 80, gap: 12 },
-  emptyText: { fontSize: 15 },
+  emptyText: { fontSize: fs(15) },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "flex-end",
   },
   modalCard: { padding: 28, gap: 16, margin: 12, marginBottom: 24 },
-  modalTitle: { fontSize: 20 },
-  modalSubtitle: { fontSize: 14, marginTop: -8 },
+  modalTitle: { fontSize: fs(20) },
+  modalSubtitle: { fontSize: fs(14), marginTop: -8 },
   adjustBtns: { gap: 12 },
 });

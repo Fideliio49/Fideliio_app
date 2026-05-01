@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -7,29 +7,28 @@ import {
   Alert,
   Platform,
   Switch,
-  Share,
   StatusBar,
-  TextInput,
-  ActivityIndicator,
+  ScrollView,
+  Modal,
+  Share,
 } from "react-native";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { fs, iconSize } from "@/utils/responsive";
 import QRCode from "react-native-qrcode-svg";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useTranslation } from "react-i18next";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useApp, Language, ACCENT_COLORS } from "@/context/AppContext";
-import { KEYBOARD_TOOLBAR_ID } from "@/constants/keyboard";
-import { Card } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
 import { supabase } from "@/lib/supabase";
+import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
 
-const LANGS: { code: Language; label: string }[] = [
-  { code: "fr", label: "Français" },
-  { code: "ar", label: "العربية" },
-  { code: "en", label: "English" },
+const LANGS: { code: Language; label: string; flag: string }[] = [
+  { code: "fr", label: "Français", flag: "🇫🇷" },
+  { code: "ar", label: "العربية", flag: "🇲🇦" },
+  { code: "en", label: "English", flag: "🇬🇧" },
 ];
 
 const TIER_COLORS: Record<string, string> = {
@@ -37,6 +36,133 @@ const TIER_COLORS: Record<string, string> = {
   silver: "#C0C0C0",
   gold: "#FFD700",
 };
+
+function SettingsRow({
+  icon,
+  iconColor,
+  label,
+  value,
+  onPress,
+  rightElement,
+  destructive = false,
+}: {
+  icon: keyof typeof Feather.glyphMap;
+  iconColor: string;
+  label: string;
+  value?: string;
+  onPress?: () => void;
+  rightElement?: React.ReactNode;
+  destructive?: boolean;
+}) {
+  const colors = useColors();
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={onPress ? 0.6 : 1}
+      style={styles.settingsRow}
+    >
+      <View style={[styles.rowIcon, { backgroundColor: iconColor + "18" }]}>
+        <Feather name={icon} size={iconSize(18)} color={iconColor} />
+      </View>
+      <Text
+        style={[
+          styles.rowLabel,
+          {
+            color: destructive ? "#E74C3C" : colors.foreground,
+            fontFamily: "Inter_400Regular",
+            flex: 1,
+          },
+        ]}
+      >
+        {label}
+      </Text>
+      {value && (
+        <Text
+          style={[
+            styles.rowValue,
+            { color: colors.mutedForeground, fontFamily: "Inter_400Regular" },
+          ]}
+        >
+          {value}
+        </Text>
+      )}
+      {rightElement}
+      {onPress && !rightElement && (
+        <Feather
+          name="chevron-right"
+          size={16}
+          color={colors.mutedForeground}
+        />
+      )}
+    </TouchableOpacity>
+  );
+}
+
+function SettingsSection({
+  title,
+  children,
+}: {
+  title?: string;
+  children: React.ReactNode;
+}) {
+  const colors = useColors();
+  return (
+    <View style={styles.sectionWrap}>
+      {title && (
+        <Text
+          style={[
+            styles.sectionHeader,
+            { color: colors.mutedForeground, fontFamily: "Inter_600SemiBold" },
+          ]}
+        >
+          {title}
+        </Text>
+      )}
+      <View
+        style={[
+          styles.sectionCard,
+          { backgroundColor: colors.card, borderColor: colors.border },
+        ]}
+      >
+        {children}
+      </View>
+    </View>
+  );
+}
+
+function Separator() {
+  const colors = useColors();
+  return (
+    <View style={[styles.separator, { backgroundColor: colors.border }]} />
+  );
+}
+
+function BottomModal({ visible, onClose, title, children, colors }: any) {
+  return (
+    <Modal visible={visible} transparent animationType="slide">
+      <View style={styles.modalOverlay}>
+        <TouchableOpacity style={{ flex: 1 }} onPress={onClose} />
+        <View style={[styles.modalCard, { backgroundColor: colors.card }]}>
+          <View style={styles.modalHandle} />
+          <View style={styles.modalHeader}>
+            <Text
+              style={[
+                styles.modalTitle,
+                { color: colors.foreground, fontFamily: "Inter_700Bold" },
+              ]}
+            >
+              {title}
+            </Text>
+            <TouchableOpacity onPress={onClose}>
+              <Feather name="x" size={iconSize(22)} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          </View>
+          {children}
+        </View>
+      </View>
+    </Modal>
+  );
+}
 
 export default function CustomerProfileScreen() {
   const colors = useColors();
@@ -58,26 +184,24 @@ export default function CustomerProfileScreen() {
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const isDark = colorTheme === "dark";
 
-  // ─── State depuis Supabase ────────────────────────────────
   const [customer, setCustomer] = useState<any>(null);
   const [totalPoints, setTotalPoints] = useState(0);
-  const [loading, setLoading] = useState(true);
-
-  const [isEditing, setIsEditing] = useState(false);
+  const [showInfoModal, setShowInfoModal] = useState(false);
+  const [showLangModal, setShowLangModal] = useState(false);
+  const [showColorModal, setShowColorModal] = useState(false);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [saving, setSaving] = useState(false);
-
   const [toastMsg, setToastMsg] = useState("");
   const [toastType, setToastType] = useState<"success" | "error">("success");
   const [toastVisible, setToastVisible] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function showToast(message: string, type: "success" | "error" = "success") {
+  function showToast(msg: string, type: "success" | "error" = "success") {
     if (toastTimer.current) clearTimeout(toastTimer.current);
-    setToastMsg(message);
+    setToastMsg(msg);
     setToastType(type);
     setToastVisible(true);
     toastTimer.current = setTimeout(() => setToastVisible(false), 2500);
@@ -86,65 +210,37 @@ export default function CustomerProfileScreen() {
   useFocusEffect(
     useCallback(() => {
       StatusBar.setBarStyle(isDark ? "light-content" : "dark-content", true);
-      if (Platform.OS === "android") {
+      if (Platform.OS === "android")
         StatusBar.setBackgroundColor(isDark ? "#121212" : "#F9FAFB", true);
-      }
       loadProfile();
-    }, [isDark, user]),
+    }, [isDark, user?.id]),
   );
 
-  // ─── Charger le profil depuis Supabase ────────────────────
   async function loadProfile() {
     if (!user?.id) return;
-    try {
-      setLoading(true);
-
-      const { data: customerData, error } = await supabase
-        .from("customers")
-        .select("*")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (error) {
-        console.error("Erreur chargement profil:", error);
-        return;
-      }
-
-      setCustomer(customerData);
-      setFirstName(customerData.first_name ?? "");
-      setLastName(customerData.last_name ?? "");
-      setEmail(customerData.email ?? "");
-      setPhone(customerData.phone ?? "");
-
-      // Points depuis la vue dynamique
-      const { data: pointsData } = await supabase
-        .from("customer_total_points")
-        .select("total_points")
-        .eq("customer_id", customerData.id)
-        .maybeSingle();
-
-      setTotalPoints(pointsData?.total_points ?? 0);
-    } catch (err) {
-      console.error("Erreur:", err);
-    } finally {
-      setLoading(false);
-    }
+    const { data: customerData } = await supabase
+      .from("customers")
+      .select("*")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (!customerData) return;
+    setCustomer(customerData);
+    setFirstName(customerData.first_name ?? "");
+    setLastName(customerData.last_name ?? "");
+    setEmail(customerData.email ?? "");
+    setPhone(customerData.phone ?? "");
+    const { data: pointsData } = await supabase
+      .from("customer_total_points")
+      .select("total_points")
+      .eq("customer_id", customerData.id)
+      .maybeSingle();
+    setTotalPoints(Math.max(0, pointsData?.total_points ?? 0));
   }
 
-  // ─── Sauvegarder les modifications ────────────────────────
-  async function handleSave() {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (email.trim() && !emailRegex.test(email.trim())) {
-      showToast("Email invalide", "error");
-      return;
-    }
-    if (!email.trim() && !phone.trim()) {
-      showToast("Email ou téléphone requis", "error");
-      return;
-    }
+  async function handleSaveInfo() {
     setSaving(true);
     try {
-      const { error } = await supabase
+      await supabase
         .from("customers")
         .update({
           first_name: firstName.trim(),
@@ -153,39 +249,21 @@ export default function CustomerProfileScreen() {
           phone: phone.trim() || null,
         })
         .eq("user_id", user!.id);
-
-      if (error) throw error;
-
-      setCustomer((prev: any) => ({
-        ...prev,
-        first_name: firstName.trim(),
-        last_name: lastName.trim(),
-        email: email.trim(),
-        phone: phone.trim(),
-      }));
-
-      setIsEditing(false);
-      showToast("✓ Informations mises à jour");
+      await loadProfile();
+      setShowInfoModal(false);
+      showToast(t("profile.saveSuccess"));
     } catch (err: any) {
-      showToast(err.message || "Erreur lors de la sauvegarde", "error");
+      showToast(err.message || t("common.error"), "error");
     } finally {
       setSaving(false);
     }
   }
 
-  function handleCancel() {
-    setFirstName(customer?.first_name ?? "");
-    setLastName(customer?.last_name ?? "");
-    setEmail(customer?.email ?? "");
-    setPhone(customer?.phone ?? "");
-    setIsEditing(false);
-  }
-
   async function handleLogout() {
-    Alert.alert("Déconnexion", "", [
-      { text: "Annuler", style: "cancel" },
+    Alert.alert(t("profile.logout"), "", [
+      { text: t("common.cancel"), style: "cancel" },
       {
-        text: "Se déconnecter",
+        text: t("profile.logout"),
         style: "destructive",
         onPress: async () => {
           await logout();
@@ -195,465 +273,466 @@ export default function CustomerProfileScreen() {
     ]);
   }
 
-  function handleDeleteAccount() {
+  async function handleDeleteAccount() {
     Alert.alert(
-      "Supprimer votre compte ?",
-      "Cette action est irréversible. Toutes vos données seront définitivement supprimées.",
+      language === "ar"
+        ? "حذف الحساب؟"
+        : language === "en"
+          ? "Delete your account?"
+          : "Supprimer votre compte ?",
+      language === "ar"
+        ? "هذا الإجراء لا يمكن التراجع عنه."
+        : language === "en"
+          ? "This action is irreversible."
+          : "Cette action est irréversible.",
       [
-        { text: "Annuler", style: "cancel" },
+        { text: t("common.cancel"), style: "cancel" },
         {
-          text: "Supprimer définitivement",
+          text:
+            language === "ar"
+              ? "حذف نهائي"
+              : language === "en"
+                ? "Delete permanently"
+                : "Supprimer définitivement",
           style: "destructive",
           onPress: async () => {
-            await deleteAccount();
-            router.replace("/onboarding/language");
+            try {
+              await deleteAccount();
+              router.replace("/onboarding/language");
+            } catch (e: any) {
+              Alert.alert(t("common.error"), e.message || "Erreur");
+            }
           },
         },
       ],
     );
   }
 
-  const tierColor = TIER_COLORS[customer?.tier ?? "bronze"];
-  const qrCodeValue = customer?.qr_code ?? null;
-
   async function handleShareQr() {
-    if (!qrCodeValue) return;
+    if (!customer?.qr_code) return;
     try {
-      await Share.share({ message: `Mon code Fideliio : ${qrCodeValue}` });
+      await Share.share({ message: `Mon code Fideliio : ${customer.qr_code}` });
     } catch {}
   }
 
-  const infoFields = [
-    {
-      label: "Prénom",
-      value: firstName,
-      onChange: setFirstName,
-      kbType: "default" as const,
-    },
-    {
-      label: "Nom",
-      value: lastName,
-      onChange: setLastName,
-      kbType: "default" as const,
-    },
-    {
-      label: "Email",
-      value: email,
-      onChange: setEmail,
-      kbType: "email-address" as const,
-    },
-    {
-      label: "Téléphone",
-      value: phone,
-      onChange: setPhone,
-      kbType: "phone-pad" as const,
-    },
-  ];
+  const tierColor = TIER_COLORS[customer?.tier ?? "bronze"];
 
-  if (loading) {
-    return (
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: colors.background,
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-      >
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
-  }
+  // ── Labels traduits ──
+  const labelMyInfo =
+    language === "ar"
+      ? "معلوماتي"
+      : language === "en"
+        ? "My information"
+        : t("profile.myInfo");
+  const labelPrefs =
+    language === "ar"
+      ? "التفضيلات"
+      : language === "en"
+        ? "Preferences"
+        : "Préférences";
+  const labelAccount =
+    language === "ar" ? "الحساب" : language === "en" ? "Account" : "Compte";
+  const labelColor =
+    language === "ar"
+      ? "اللون الرئيسي"
+      : language === "en"
+        ? "Main color"
+        : "Couleur principale";
+  const labelDarkMode = isDark
+    ? language === "ar"
+      ? "الوضع الداكن"
+      : language === "en"
+        ? "Dark mode"
+        : "Mode sombre"
+    : language === "ar"
+      ? "الوضع الفاتح"
+      : language === "en"
+        ? "Light mode"
+        : "Mode clair";
+  const labelDelete =
+    language === "ar"
+      ? "حذف الحساب"
+      : language === "en"
+        ? "Delete my account"
+        : "Supprimer mon compte";
+  const labelShare =
+    language === "ar" ? "مشاركة" : language === "en" ? "Share" : "Partager";
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <KeyboardAwareScrollView
-        style={[styles.container, { backgroundColor: colors.background }]}
-        contentContainerStyle={{ paddingBottom: 100 }}
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 120 }}
         showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        bottomOffset={Platform.OS === "ios" ? 20 : 60}
       >
+        {/* ── Hero ── */}
         <View
           style={[
-            styles.header,
-            { paddingTop: topPad + 12, backgroundColor: colors.background },
+            styles.heroSection,
+            {
+              paddingTop: topPad + 12,
+              backgroundColor: colors.card,
+              borderBottomColor: colors.border,
+            },
           ]}
         >
+          <View
+            style={[styles.avatarWrap, { backgroundColor: accentColor + "20" }]}
+          >
+            <Text
+              style={[
+                styles.avatarText,
+                { color: accentColor, fontFamily: "Inter_700Bold" },
+              ]}
+            >
+              {(customer?.first_name?.[0] ?? "").toUpperCase()}
+              {(customer?.last_name?.[0] ?? "").toUpperCase()}
+            </Text>
+          </View>
           <Text
             style={[
-              styles.title,
+              styles.heroName,
               { color: colors.foreground, fontFamily: "Inter_700Bold" },
             ]}
           >
-            Profil
+            {customer?.first_name} {customer?.last_name}
           </Text>
-        </View>
+          {customer?.email && (
+            <Text
+              style={[
+                styles.heroSub,
+                {
+                  color: colors.mutedForeground,
+                  fontFamily: "Inter_400Regular",
+                },
+              ]}
+            >
+              {customer.email}
+            </Text>
+          )}
+          {customer?.phone && (
+            <Text
+              style={[
+                styles.heroSub,
+                {
+                  color: colors.mutedForeground,
+                  fontFamily: "Inter_400Regular",
+                },
+              ]}
+            >
+              {customer.phone}
+            </Text>
+          )}
 
-        <View style={styles.content}>
-          {/* Mes informations */}
-          <Card style={styles.section}>
-            <View style={styles.infoHeader}>
-              <Text
-                style={[
-                  styles.sectionTitle,
-                  { color: colors.foreground, fontFamily: "Inter_600SemiBold" },
-                ]}
-              >
-                Mes informations
-              </Text>
-              <TouchableOpacity
-                onPress={() => {
-                  if (isEditing) {
-                    handleCancel();
-                  } else {
-                    setIsEditing(true);
-                  }
-                }}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Feather
-                  name={isEditing ? "x" : "edit-2"}
-                  size={18}
-                  color={colors.primary}
-                />
-              </TouchableOpacity>
-            </View>
-
-            {infoFields.map(({ label, value, onChange, kbType }) => (
-              <View key={label} style={styles.infoField}>
-                <Text
-                  style={[
-                    styles.fieldLabel,
-                    {
-                      color: colors.mutedForeground,
-                      fontFamily: "Inter_400Regular",
-                    },
-                  ]}
-                >
-                  {label}
-                </Text>
-                <TextInput
-                  value={value}
-                  onChangeText={onChange}
-                  editable={isEditing}
-                  keyboardType={kbType}
-                  inputAccessoryViewID={
-                    Platform.OS === "ios" ? KEYBOARD_TOOLBAR_ID : undefined
-                  }
-                  style={[
-                    styles.fieldInput,
-                    {
-                      color: colors.foreground,
-                      backgroundColor: isEditing ? colors.card : "transparent",
-                      borderColor: isEditing ? colors.primary : colors.border,
-                      borderWidth: isEditing ? 1.5 : 1,
-                      fontFamily: "Inter_400Regular",
-                    },
-                  ]}
-                  placeholderTextColor={colors.mutedForeground}
-                />
-              </View>
-            ))}
-
-            {isEditing && (
-              <View style={styles.editActions}>
-                <Button
-                  title="Annuler"
-                  onPress={handleCancel}
-                  variant="outline"
-                  size="sm"
-                  style={{ flex: 1 }}
-                />
-                <Button
-                  title="Enregistrer"
-                  onPress={handleSave}
-                  loading={saving}
-                  size="sm"
-                  style={{ flex: 1 }}
-                />
-              </View>
-            )}
-          </Card>
-
-          {/* Carte profil */}
-          <Card style={styles.profileCard}>
+          <View style={styles.tierRow}>
             <View
               style={[
-                styles.avatar,
-                { backgroundColor: colors.primary + "20" },
+                styles.tierBadge,
+                { borderColor: tierColor, backgroundColor: tierColor + "20" },
               ]}
             >
               <Text
                 style={[
-                  styles.avatarText,
-                  { color: colors.primary, fontFamily: "Inter_700Bold" },
+                  styles.tierText,
+                  { color: tierColor, fontFamily: "Inter_700Bold" },
                 ]}
               >
-                {(customer?.first_name?.[0] ?? "").toUpperCase()}
-                {(customer?.last_name?.[0] ?? "").toUpperCase()}
+                {(customer?.tier ?? "bronze").toUpperCase()}
               </Text>
             </View>
             <Text
               style={[
-                styles.userName,
-                { color: colors.foreground, fontFamily: "Inter_700Bold" },
+                styles.tierPoints,
+                { color: "#F9A602", fontFamily: "Inter_600SemiBold" },
               ]}
             >
-              {customer?.first_name} {customer?.last_name}
+              {totalPoints} {t("common.points").toLowerCase()}
             </Text>
-            {customer?.email && (
-              <Text
-                style={[
-                  styles.userContact,
-                  {
-                    color: colors.mutedForeground,
-                    fontFamily: "Inter_400Regular",
-                  },
-                ]}
-              >
-                {customer.email}
-              </Text>
-            )}
-            {customer?.phone && (
-              <Text
-                style={[
-                  styles.userContact,
-                  {
-                    color: colors.mutedForeground,
-                    fontFamily: "Inter_400Regular",
-                  },
-                ]}
-              >
-                {customer.phone}
-              </Text>
-            )}
-            <View style={styles.tierRow}>
-              <Badge
-                label={customer?.tier ?? "bronze"}
-                style={{
-                  borderWidth: 1.5,
-                  borderColor: tierColor,
-                  backgroundColor: tierColor + "20",
-                }}
-              />
-              <Text
-                style={[
-                  styles.tierPoints,
-                  { color: "#F9A602", fontFamily: "Inter_600SemiBold" },
-                ]}
-              >
-                {totalPoints} points
-              </Text>
-            </View>
-          </Card>
+          </View>
 
-          {/* QR Code */}
-          {qrCodeValue && (
-            <Card style={styles.qrCard}>
-              <Text
-                style={[
-                  styles.sectionTitle,
-                  { color: colors.foreground, fontFamily: "Inter_600SemiBold" },
-                ]}
-              >
-                Mon QR Code
-              </Text>
+          {customer?.qr_code && (
+            <View style={styles.qrSection}>
               <View style={styles.qrWrap}>
                 <QRCode
-                  value={qrCodeValue}
-                  size={150}
+                  value={customer.qr_code}
+                  size={120}
                   color="#1a1a2e"
                   backgroundColor="white"
                 />
               </View>
               <Text
                 style={[
-                  styles.qrCodeText,
+                  styles.qrCode,
                   {
                     color: colors.mutedForeground,
                     fontFamily: "Inter_400Regular",
                   },
                 ]}
               >
-                {qrCodeValue}
+                {customer.qr_code}
               </Text>
               <TouchableOpacity
                 onPress={handleShareQr}
-                style={[
-                  styles.qrShareBtn,
-                  {
-                    borderColor: colors.primary + "40",
-                    borderRadius: colors.radius,
-                  },
-                ]}
+                style={[styles.shareBtn, { borderColor: accentColor + "40" }]}
               >
-                <Feather name="share-2" size={15} color={colors.primary} />
+                <Feather name="share-2" size={iconSize(14)} color={accentColor} />
                 <Text
                   style={[
-                    styles.qrShareText,
-                    { color: colors.primary, fontFamily: "Inter_600SemiBold" },
+                    styles.shareText,
+                    { color: accentColor, fontFamily: "Inter_600SemiBold" },
                   ]}
                 >
-                  Partager
+                  {labelShare}
                 </Text>
               </TouchableOpacity>
-            </Card>
-          )}
-
-          {/* Langue */}
-          <Card style={styles.section}>
-            <Text
-              style={[
-                styles.sectionTitle,
-                { color: colors.foreground, fontFamily: "Inter_600SemiBold" },
-              ]}
-            >
-              Langue
-            </Text>
-            <View style={styles.langRow}>
-              {LANGS.map((l) => (
-                <TouchableOpacity
-                  key={l.code}
-                  onPress={() => setLanguage(l.code)}
-                  style={[
-                    styles.langBtn,
-                    {
-                      borderColor:
-                        language === l.code ? colors.primary : colors.border,
-                      backgroundColor:
-                        language === l.code
-                          ? colors.primary + "15"
-                          : colors.background,
-                      borderRadius: colors.radius,
-                      borderWidth: language === l.code ? 2 : 1,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.langLabel,
-                      {
-                        color:
-                          language === l.code
-                            ? colors.primary
-                            : colors.mutedForeground,
-                        fontFamily:
-                          language === l.code
-                            ? "Inter_600SemiBold"
-                            : "Inter_400Regular",
-                      },
-                    ]}
-                  >
-                    {l.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
             </View>
-          </Card>
+          )}
+        </View>
 
-          {/* Apparence */}
-          <Card style={styles.section}>
-            <Text
-              style={[
-                styles.sectionTitle,
-                { color: colors.foreground, fontFamily: "Inter_600SemiBold" },
-              ]}
-            >
-              Apparence
-            </Text>
-            <View style={styles.themeRow}>
-              <View style={styles.themeIconRow}>
-                <Feather
-                  name="sun"
-                  size={18}
-                  color={!isDark ? colors.primary : colors.mutedForeground}
+        {/* ── MES INFORMATIONS ── */}
+        <SettingsSection title={labelMyInfo}>
+          <SettingsRow
+            icon="user"
+            iconColor={accentColor}
+            label={`${customer?.first_name ?? ""} ${customer?.last_name ?? ""}`}
+            onPress={() => setShowInfoModal(true)}
+          />
+          <Separator />
+          <SettingsRow
+            icon="mail"
+            iconColor="#3498DB"
+            label={customer?.email ?? customer?.phone ?? "—"}
+            onPress={() => setShowInfoModal(true)}
+          />
+          {customer?.phone && (
+            <>
+              <Separator />
+              <SettingsRow
+                icon="smartphone"
+                iconColor="#27AE60"
+                label={customer.phone}
+                onPress={() => setShowInfoModal(true)}
+              />
+            </>
+          )}
+        </SettingsSection>
+
+        {/* ── PRÉFÉRENCES ── */}
+        <SettingsSection title={labelPrefs}>
+          <SettingsRow
+            icon="globe"
+            iconColor="#3498DB"
+            label={t("profile.language")}
+            value={LANGS.find((l) => l.code === language)?.label}
+            onPress={() => setShowLangModal(true)}
+          />
+          <Separator />
+          <SettingsRow
+            icon="droplet"
+            iconColor={accentColor}
+            label={labelColor}
+            onPress={() => setShowColorModal(true)}
+            rightElement={
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+              >
+                <View
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 10,
+                    backgroundColor: accentColor,
+                  }}
                 />
-                <Text
-                  style={[
-                    styles.themeLabel,
-                    {
-                      color: colors.foreground,
-                      fontFamily: "Inter_400Regular",
-                    },
-                  ]}
-                >
-                  {isDark ? "Mode sombre" : "Mode clair"}
-                </Text>
                 <Feather
-                  name="moon"
-                  size={18}
-                  color={isDark ? colors.primary : colors.mutedForeground}
+                  name="chevron-right"
+                  size={16}
+                  color={colors.mutedForeground}
                 />
               </View>
+            }
+          />
+          <Separator />
+          <SettingsRow
+            icon={isDark ? "moon" : "sun"}
+            iconColor={isDark ? "#9B59B6" : "#F9A602"}
+            label={labelDarkMode}
+            rightElement={
               <Switch
                 value={isDark}
                 onValueChange={(val) => setColorTheme(val ? "dark" : "light")}
-                trackColor={{
-                  false: colors.border,
-                  true: colors.primary + "80",
-                }}
-                thumbColor={isDark ? colors.primary : colors.mutedForeground}
+                trackColor={{ false: colors.border, true: accentColor + "80" }}
+                thumbColor={isDark ? accentColor : colors.mutedForeground}
+              />
+            }
+          />
+        </SettingsSection>
+
+        {/* ── COMPTE ── */}
+        <SettingsSection title={labelAccount}>
+          <SettingsRow
+            icon="log-out"
+            iconColor="#E67E22"
+            label={t("profile.logout")}
+            onPress={handleLogout}
+          />
+          <Separator />
+          <SettingsRow
+            icon="trash-2"
+            iconColor="#E74C3C"
+            label={labelDelete}
+            onPress={handleDeleteAccount}
+            destructive
+          />
+        </SettingsSection>
+      </ScrollView>
+
+      {/* ── Modal Mes informations ── */}
+      <BottomModal
+        visible={showInfoModal}
+        onClose={() => setShowInfoModal(false)}
+        title={labelMyInfo}
+        colors={colors}
+      >
+        <KeyboardAwareScrollView
+          style={{ maxHeight: 500 }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          bottomOffset={60}
+        >
+          <View style={{ padding: 20, gap: 12 }}>
+            <View style={{ flexDirection: "row", gap: 12 }}>
+              <Input
+                label={t("auth.firstName")}
+                value={firstName}
+                onChangeText={setFirstName}
+                leftIcon="user"
+                containerStyle={{ flex: 1 }}
+              />
+              <Input
+                label={t("auth.lastName")}
+                value={lastName}
+                onChangeText={setLastName}
+                leftIcon="user"
+                containerStyle={{ flex: 1 }}
               />
             </View>
-            <View style={styles.accentSection}>
+            <Input
+              label={t("auth.email")}
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              leftIcon="mail"
+            />
+            <Input
+              label={t("auth.phone")}
+              value={phone}
+              onChangeText={setPhone}
+              keyboardType="phone-pad"
+              leftIcon="smartphone"
+            />
+            <Button
+              title={t("common.save")}
+              onPress={handleSaveInfo}
+              loading={saving}
+              style={{ backgroundColor: accentColor, marginTop: 8 }}
+            />
+          </View>
+        </KeyboardAwareScrollView>
+      </BottomModal>
+
+      {/* ── Modal Langue ── */}
+      <BottomModal
+        visible={showLangModal}
+        onClose={() => setShowLangModal(false)}
+        title={t("profile.language")}
+        colors={colors}
+      >
+        <View style={{ padding: 20, gap: 4 }}>
+          {LANGS.map((l) => (
+            <TouchableOpacity
+              key={l.code}
+              onPress={() => {
+                setLanguage(l.code);
+                setShowLangModal(false);
+              }}
+              style={[
+                styles.langOption,
+                {
+                  backgroundColor:
+                    language === l.code ? accentColor + "15" : "transparent",
+                  borderRadius: 12,
+                },
+              ]}
+            >
+              <Text allowFontScaling={false} style={{ fontSize: fs(24) }}>{l.flag}</Text>
               <Text
-                style={[
-                  styles.accentLabel,
-                  {
-                    color: colors.mutedForeground,
-                    fontFamily: "Inter_400Regular",
-                  },
-                ]}
+                allowFontScaling={false}
+                style={{
+                  flex: 1,
+                  color: colors.foreground,
+                  fontFamily:
+                    language === l.code
+                      ? "Inter_600SemiBold"
+                      : "Inter_400Regular",
+                  fontSize: fs(16),
+                }}
               >
-                Couleur principale
+                {l.label}
               </Text>
-              <View style={styles.swatchRow}>
-                {ACCENT_COLORS.map((swatch) => {
-                  const isSelected = accentColor === swatch.value;
-                  return (
-                    <TouchableOpacity
-                      key={swatch.key}
-                      onPress={() => setAccentColor(swatch.value)}
-                      style={[
-                        styles.swatch,
-                        {
-                          backgroundColor: swatch.value,
-                          borderWidth: isSelected ? 3 : 2,
-                          borderColor: isSelected
-                            ? swatch.value
-                            : "transparent",
-                          transform: [{ scale: isSelected ? 1.15 : 1 }],
-                        },
-                      ]}
-                    >
-                      {isSelected && (
-                        <Feather name="check" size={14} color="white" />
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-          </Card>
-
-          <Button
-            title="Se déconnecter"
-            onPress={handleLogout}
-            variant="danger"
-            size="lg"
-            style={styles.logoutBtn}
-          />
-
-          <TouchableOpacity
-            onPress={handleDeleteAccount}
-            style={styles.deleteAccountBtn}
-          >
-            <Text style={styles.deleteAccountText}>Supprimer mon compte</Text>
-          </TouchableOpacity>
+              {language === l.code && (
+                <Feather name="check" size={iconSize(20)} color={accentColor} />
+              )}
+            </TouchableOpacity>
+          ))}
         </View>
-      </KeyboardAwareScrollView>
+      </BottomModal>
 
+      {/* ── Modal Couleur ── */}
+      <BottomModal
+        visible={showColorModal}
+        onClose={() => setShowColorModal(false)}
+        title={labelColor}
+        colors={colors}
+      >
+        <View style={{ padding: 20 }}>
+          <View style={styles.swatchGrid}>
+            {ACCENT_COLORS.map((swatch) => {
+              const isSelected = accentColor === swatch.value;
+              return (
+                <TouchableOpacity
+                  key={swatch.key}
+                  onPress={() => {
+                    setAccentColor(swatch.value);
+                    setShowColorModal(false);
+                  }}
+                  style={[
+                    styles.swatchLarge,
+                    {
+                      backgroundColor: swatch.value,
+                      borderWidth: isSelected ? 4 : 0,
+                      borderColor: "#fff",
+                      shadowColor: isSelected ? swatch.value : "transparent",
+                      shadowOffset: { width: 0, height: 4 },
+                      shadowOpacity: 0.4,
+                      shadowRadius: 8,
+                      elevation: isSelected ? 8 : 0,
+                      transform: [{ scale: isSelected ? 1.1 : 1 }],
+                    },
+                  ]}
+                >
+                  {isSelected && (
+                    <Feather name="check" size={iconSize(24)} color="white" />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      </BottomModal>
+
+      {/* ── Toast ── */}
       {toastVisible && (
         <View
           style={[
@@ -663,7 +742,9 @@ export default function CustomerProfileScreen() {
             },
           ]}
         >
-          <Text style={styles.toastText}>{toastMsg}</Text>
+          <Text style={[styles.toastText, { fontFamily: "Inter_600SemiBold" }]}>
+            {toastMsg}
+          </Text>
         </View>
       )}
     </View>
@@ -671,86 +752,124 @@ export default function CustomerProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: { paddingHorizontal: 20, paddingBottom: 12 },
-  title: { fontSize: 24 },
-  content: { padding: 16, gap: 16 },
-  profileCard: { alignItems: "center", gap: 6 },
-  avatar: {
+  heroSection: {
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingBottom: 24,
+    borderBottomWidth: 1,
+    gap: 4,
+  },
+  avatarWrap: {
     width: 80,
     height: 80,
     borderRadius: 40,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 4,
+    marginBottom: 8,
   },
-  avatarText: { fontSize: 28 },
-  userName: { fontSize: 20 },
-  userContact: { fontSize: 14 },
+  avatarText: { fontSize: fs(28) },
+  heroName: { fontSize: fs(20) },
+  heroSub: { fontSize: fs(13), marginTop: 2 },
   tierRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    marginTop: 4,
+    marginTop: 8,
   },
-  tierPoints: { fontSize: 15 },
-  section: {},
-  sectionTitle: { fontSize: 15, marginBottom: 14 },
-  qrCard: { alignItems: "center", gap: 10 },
+  tierBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 99,
+    borderWidth: 1.5,
+  },
+  tierText: { fontSize: fs(12) },
+  tierPoints: { fontSize: fs(15) },
+  qrSection: { alignItems: "center", marginTop: 16, gap: 8 },
   qrWrap: { padding: 14, backgroundColor: "white", borderRadius: 12 },
-  qrCodeText: { fontSize: 11, letterSpacing: 1.2 },
-  qrShareBtn: {
+  qrCode: { fontSize: fs(11), letterSpacing: 1.2 },
+  shareBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     paddingVertical: 8,
     paddingHorizontal: 20,
     borderWidth: 1.5,
+    borderRadius: 99,
   },
-  qrShareText: { fontSize: 14 },
-  langRow: { flexDirection: "row", gap: 8 },
-  langBtn: { flex: 1, padding: 10, alignItems: "center", gap: 4 },
-  langLabel: { fontSize: 12, textAlign: "center" },
-  themeRow: {
+  shareText: { fontSize: fs(14) },
+  sectionWrap: { marginTop: 24, paddingHorizontal: 16 },
+  sectionHeader: {
+    fontSize: fs(12),
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: 6,
+    paddingHorizontal: 4,
+  },
+  sectionCard: { borderRadius: 12, borderWidth: 1, overflow: "hidden" },
+  settingsRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 16,
+    gap: 14,
   },
-  themeIconRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  themeLabel: { fontSize: 14 },
-  accentSection: { gap: 10 },
-  accentLabel: { fontSize: 13 },
-  swatchRow: { flexDirection: "row", gap: 14, alignItems: "center" },
-  swatch: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  rowIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
   },
-  logoutBtn: {},
-  deleteAccountBtn: {
-    alignItems: "center",
-    paddingVertical: 16,
-    paddingHorizontal: 20,
+  rowLabel: { fontSize: fs(15) },
+  rowValue: { fontSize: fs(13) },
+  separator: { height: 1, marginLeft: 64 },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
   },
-  deleteAccountText: { color: "#E74C3C", fontSize: 14, textAlign: "center" },
-  infoHeader: {
+  modalCard: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingBottom: 32,
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#E0E0E0",
+    alignSelf: "center",
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  modalHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 14,
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
   },
-  infoField: { marginBottom: 12 },
-  fieldLabel: { fontSize: 12, marginBottom: 4 },
-  fieldInput: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    borderRadius: 8,
+  modalTitle: { fontSize: fs(18) },
+  langOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+    padding: 14,
   },
-  editActions: { flexDirection: "row", gap: 12, marginTop: 8 },
+  swatchGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 16,
+    justifyContent: "center",
+    paddingVertical: 8,
+  },
+  swatchLarge: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   toast: {
     position: "absolute",
     bottom: 90,
@@ -765,10 +884,5 @@ const styles = StyleSheet.create({
     elevation: 8,
     zIndex: 1000,
   },
-  toastText: {
-    color: "white",
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 14,
-    textAlign: "center",
-  },
+  toastText: { color: "white", fontSize: fs(14), textAlign: "center" },
 });
