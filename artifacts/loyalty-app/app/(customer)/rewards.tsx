@@ -9,6 +9,7 @@ import {
   Alert,
   Modal,
   Animated,
+  StatusBar,
 } from "react-native";
 import { fs, iconSize } from "@/utils/responsive";
 import { Feather } from "@expo/vector-icons";
@@ -36,14 +37,14 @@ function formatDate(dateStr: string): string {
   );
 }
 
-// ✅ Type pour un groupe commerçant
 type MerchantGroup = {
   merchant_id: string;
   business_name: string;
   customer_points: number;
-  max_points: number; // max des récompenses
+  max_points: number;
   rewards: any[];
-  reachable: number; // nb récompenses atteintes
+  reachable: number;
+  promotions: any[];
 };
 
 export default function CustomerRewardsScreen() {
@@ -55,20 +56,17 @@ export default function CustomerRewardsScreen() {
   const [customer, setCustomer] = useState<any>(null);
   const [merchantGroups, setMerchantGroups] = useState<MerchantGroup[]>([]);
   const [redemptions, setRedemptions] = useState<any[]>([]);
-
-  // ✅ État pour le détail d'un commerçant
   const [selectedMerchant, setSelectedMerchant] =
     useState<MerchantGroup | null>(null);
   const [showDetail, setShowDetail] = useState(false);
-
-  // QR
   const [showQR, setShowQR] = useState(false);
   const [activeToken, setActiveToken] = useState<string | null>(null);
   const [activeReward, setActiveReward] = useState<any>(null);
   const [tokenExpiry, setTokenExpiry] = useState<Date | null>(null);
   const [countdown, setCountdown] = useState(120);
   const [generatingToken, setGeneratingToken] = useState(false);
-  const [favorites, setFavorites] = useState<string[]>([]); // reward ids
+  const [favorites, setFavorites] = useState<string[]>([]);
+  const [detailView, setDetailView] = useState<"rewards" | "promos">("rewards");
 
   const toastOpacity = useRef(new Animated.Value(0)).current;
   const [toastMsg, setToastMsg] = useState("");
@@ -78,7 +76,6 @@ export default function CustomerRewardsScreen() {
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
-  // Labels
   const labelTitle =
     language === "ar"
       ? "مكافآتي"
@@ -137,8 +134,26 @@ export default function CustomerRewardsScreen() {
     language === "ar" ? "مكافأة" : language === "en" ? "reward" : "récompense";
   const labelReached =
     language === "ar" ? "مبلغة" : language === "en" ? "reached" : "atteinte";
-  const labelBack =
-    language === "ar" ? "رجوع" : language === "en" ? "Back" : "Retour";
+  const labelPromos =
+    language === "ar" ? "عروض" : language === "en" ? "Offers" : "Offres";
+  const labelPromosTitle =
+    language === "ar"
+      ? "العروض الحالية"
+      : language === "en"
+        ? "Current offers"
+        : "Offres en cours";
+  const labelFlash =
+    language === "ar" ? "عرض محدود" : language === "en" ? "Flash" : "Flash";
+  const labelEvent =
+    language === "ar" ? "حدث" : language === "en" ? "Event" : "Événement";
+  const labelDiscount =
+    language === "ar" ? "تخفيض" : language === "en" ? "Discount" : "Remise";
+  const labelNoPromo =
+    language === "ar"
+      ? "لا توجد عروض حالياً"
+      : language === "en"
+        ? "No current offers"
+        : "Aucune offre en cours";
 
   function showToast(msg: string, color = "#27AE60") {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -161,7 +176,6 @@ export default function CustomerRewardsScreen() {
     ]).start(() => setToastVisible(false));
   }
 
-  // ✅ Favoris
   const FAVS_KEY = `@fav_rewards_${user?.id ?? "guest"}`;
 
   async function loadFavorites() {
@@ -183,6 +197,9 @@ export default function CustomerRewardsScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      StatusBar.setBarStyle("dark-content", true);
+      if (Platform.OS === "android")
+        StatusBar.setBackgroundColor("transparent", true);
       loadData();
       loadFavorites();
     }, [user?.id]),
@@ -258,7 +275,6 @@ export default function CustomerRewardsScreen() {
     if (!customerData) return;
     setCustomer(customerData);
 
-    // Charger les points par commerçant
     const { data: merchantPoints } = await supabase
       .from("customer_merchant_points")
       .select("merchant_id, total_points, business_name")
@@ -266,14 +282,20 @@ export default function CustomerRewardsScreen() {
 
     if (merchantPoints && merchantPoints.length > 0) {
       const merchantIds = merchantPoints.map((m: any) => m.merchant_id);
-      const { data: rewards } = await supabase
-        .from("rewards")
-        .select("*")
-        .in("merchant_id", merchantIds)
-        .eq("is_active", true)
-        .order("points_required", { ascending: true });
+      const [{ data: rewards }, { data: promos }] = await Promise.all([
+        supabase
+          .from("rewards")
+          .select("*")
+          .in("merchant_id", merchantIds)
+          .eq("is_active", true)
+          .or("expiry_date.is.null,expiry_date.gt." + new Date().toISOString()) // ✅ Filtrer expirées
+          .order("points_required", { ascending: true }),
+        supabase
+          .from("active_promotions")
+          .select("*")
+          .in("merchant_id", merchantIds),
+      ]);
 
-      // ✅ Grouper par commerçant
       const groups: MerchantGroup[] = merchantIds
         .map((merchantId: string) => {
           const mp = merchantPoints.find(
@@ -293,6 +315,9 @@ export default function CustomerRewardsScreen() {
           const reachable = merchantRewards.filter(
             (r: any) => (mp.total_points ?? 0) >= r.points_required,
           ).length;
+          const merchantPromos = (promos ?? []).filter(
+            (p: any) => p.merchant_id === merchantId,
+          );
           return {
             merchant_id: merchantId,
             business_name: mp.business_name,
@@ -300,13 +325,12 @@ export default function CustomerRewardsScreen() {
             max_points: maxPoints,
             rewards: merchantRewards,
             reachable,
+            promotions: merchantPromos,
           };
         })
         .filter((g: MerchantGroup) => g.rewards.length > 0);
 
       setMerchantGroups(groups);
-
-      // Mettre à jour le détail si ouvert
       if (selectedMerchant) {
         const updated = groups.find(
           (g) => g.merchant_id === selectedMerchant.merchant_id,
@@ -373,8 +397,8 @@ export default function CustomerRewardsScreen() {
       setActiveReward(reward);
       setTokenExpiry(expiresAt);
       setCountdown(120);
-      // ✅ Fermer le modal détail d'abord puis afficher QR
       setShowDetail(false);
+      setDetailView("rewards");
       setTimeout(() => setShowQR(true), 350);
     } catch (err: any) {
       Alert.alert(
@@ -386,13 +410,67 @@ export default function CustomerRewardsScreen() {
     }
   }
 
-  // ── LISTE DES COMMERÇANTS ──
+  function promoMeta(type: string) {
+    switch (type) {
+      case "flash":
+        return { color: "#E74C3C", label: labelFlash, icon: "zap" as const };
+      case "event":
+        return {
+          color: "#8E44AD",
+          label: labelEvent,
+          icon: "calendar" as const,
+        };
+      default:
+        return { color: "#27AE60", label: labelDiscount, icon: "tag" as const };
+    }
+  }
+
+  // ✅ Calculer le statut d'expiration d'une récompense
+  function getExpiryInfo(expiryDate: string | null) {
+    if (!expiryDate) return null;
+    const d = new Date(expiryDate);
+    const now = new Date();
+    const daysLeft = Math.ceil((d.getTime() - now.getTime()) / 86400000);
+    if (d < now)
+      return {
+        label: language === "en" ? "Expired" : "Expirée",
+        color: "#E74C3C",
+        isExpired: true,
+        daysLeft: 0,
+      };
+    if (daysLeft <= 7)
+      return {
+        label:
+          language === "en" ? `${daysLeft}d left` : `${daysLeft}j restants`,
+        color: "#E67E22",
+        isExpired: false,
+        daysLeft,
+      };
+    return {
+      label:
+        language === "en"
+          ? `Until ${d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}`
+          : `Jusqu'au ${d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}`,
+      color: "#27AE60",
+      isExpired: false,
+      daysLeft,
+    };
+  }
   const renderMerchantGroup = ({ item }: { item: MerchantGroup }) => {
     const progress =
       item.max_points > 0
         ? Math.min(1, item.customer_points / item.max_points)
         : 0;
     const hasReachable = item.reachable > 0;
+    const hasPromos = item.promotions.length > 0;
+
+    // ✅ Trouver la récompense qui expire le plus tôt
+    const soonestExpiry = item.rewards
+      .filter((r: any) => r.expiry_date)
+      .map((r: any) => getExpiryInfo(r.expiry_date))
+      .filter(Boolean)
+      .sort((a: any, b: any) => a.daysLeft - b.daysLeft)[0];
+
     return (
       <TouchableOpacity
         activeOpacity={0.85}
@@ -403,7 +481,6 @@ export default function CustomerRewardsScreen() {
       >
         <Card style={{ marginBottom: 10 }}>
           <View style={styles.groupRow}>
-            {/* Icône */}
             <View
               style={[
                 styles.groupIcon,
@@ -420,16 +497,40 @@ export default function CustomerRewardsScreen() {
                 color={hasReachable ? accentColor : colors.mutedForeground}
               />
             </View>
-            {/* Infos */}
             <View style={{ flex: 1, gap: 4 }}>
-              <Text
-                style={[
-                  styles.groupName,
-                  { color: colors.foreground, fontFamily: "Inter_700Bold" },
-                ]}
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
               >
-                {item.business_name}
-              </Text>
+                <Text
+                  style={[
+                    styles.groupName,
+                    { color: colors.foreground, fontFamily: "Inter_700Bold" },
+                  ]}
+                >
+                  {item.business_name}
+                </Text>
+                {hasPromos && (
+                  <View
+                    style={[
+                      styles.promoBadge,
+                      {
+                        backgroundColor: "#27AE6015",
+                        borderColor: "#27AE6040",
+                      },
+                    ]}
+                  >
+                    <Feather name="tag" size={iconSize(10)} color="#27AE60" />
+                    <Text
+                      style={[
+                        styles.promoBadgeText,
+                        { color: "#27AE60", fontFamily: "Inter_700Bold" },
+                      ]}
+                    >
+                      {item.promotions.length} {labelPromos}
+                    </Text>
+                  </View>
+                )}
+              </View>
               <Text
                 style={[
                   styles.groupSub,
@@ -444,22 +545,17 @@ export default function CustomerRewardsScreen() {
                 {labelReached}
                 {item.reachable > 1 ? "s" : ""}
               </Text>
-              {/* Barre de progression */}
-              <View style={styles.groupProgressRow}>
-                <Text
-                  style={[
-                    styles.groupPoints,
-                    {
-                      color: hasReachable
-                        ? accentColor
-                        : colors.mutedForeground,
-                      fontFamily: "Inter_600SemiBold",
-                    },
-                  ]}
-                >
-                  {item.customer_points} / {item.max_points} pts
-                </Text>
-              </View>
+              <Text
+                style={[
+                  styles.groupPoints,
+                  {
+                    color: hasReachable ? accentColor : colors.mutedForeground,
+                    fontFamily: "Inter_600SemiBold",
+                  },
+                ]}
+              >
+                {item.customer_points} / {item.max_points} pts
+              </Text>
               <View
                 style={[
                   styles.progressTrack,
@@ -478,8 +574,34 @@ export default function CustomerRewardsScreen() {
                   ]}
                 />
               </View>
+
+              {/* ✅ Badge expiration sur la card principale */}
+              {soonestExpiry && (
+                <View
+                  style={[
+                    styles.expiryRow,
+                    { backgroundColor: soonestExpiry.color + "15" },
+                  ]}
+                >
+                  <Feather
+                    name="clock"
+                    size={iconSize(11)}
+                    color={soonestExpiry.color}
+                  />
+                  <Text
+                    style={[
+                      styles.expiryText,
+                      {
+                        color: soonestExpiry.color,
+                        fontFamily: "Inter_600SemiBold",
+                      },
+                    ]}
+                  >
+                    {soonestExpiry.label}
+                  </Text>
+                </View>
+              )}
             </View>
-            {/* Badge récompenses atteintes */}
             <View style={{ alignItems: "flex-end", gap: 6 }}>
               {hasReachable && (
                 <View
@@ -509,9 +631,14 @@ export default function CustomerRewardsScreen() {
       </TouchableOpacity>
     );
   };
-
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar
+        translucent
+        backgroundColor="transparent"
+        barStyle="dark-content"
+      />
+
       <View
         style={[
           styles.header,
@@ -565,7 +692,11 @@ export default function CustomerRewardsScreen() {
           contentContainerStyle={[styles.list, { paddingBottom: 100 }]}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Feather name="gift" size={iconSize(40)} color={colors.mutedForeground} />
+              <Feather
+                name="gift"
+                size={iconSize(40)}
+                color={colors.mutedForeground}
+              />
               <Text
                 style={[
                   styles.emptyText,
@@ -593,7 +724,11 @@ export default function CustomerRewardsScreen() {
                     { backgroundColor: colors.green100 },
                   ]}
                 >
-                  <Feather name="check" size={iconSize(16)} color={colors.secondary} />
+                  <Feather
+                    name="check"
+                    size={iconSize(16)}
+                    color={colors.secondary}
+                  />
                 </View>
                 <View style={{ flex: 1, gap: 3 }}>
                   <Text
@@ -648,7 +783,11 @@ export default function CustomerRewardsScreen() {
           contentContainerStyle={[styles.list, { paddingBottom: 100 }]}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Feather name="clock" size={iconSize(40)} color={colors.mutedForeground} />
+              <Feather
+                name="clock"
+                size={iconSize(40)}
+                color={colors.mutedForeground}
+              />
               <Text
                 style={[
                   styles.emptyText,
@@ -666,12 +805,19 @@ export default function CustomerRewardsScreen() {
       )}
 
       {/* ── Modal Détail Commerçant ── */}
-      <Modal visible={showDetail} transparent animationType="slide">
+      <Modal
+        visible={showDetail}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          if (detailView === "promos") setDetailView("rewards");
+          else setShowDetail(false);
+        }}
+      >
         <View style={styles.modalOverlay}>
           <View
             style={[styles.detailCard, { backgroundColor: colors.background }]}
           >
-            {/* Header */}
             <View
               style={[
                 styles.detailHeader,
@@ -679,7 +825,10 @@ export default function CustomerRewardsScreen() {
               ]}
             >
               <TouchableOpacity
-                onPress={() => setShowDetail(false)}
+                onPress={() => {
+                  if (detailView === "promos") setDetailView("rewards");
+                  else setShowDetail(false);
+                }}
                 style={styles.backBtn}
               >
                 <Feather
@@ -695,164 +844,403 @@ export default function CustomerRewardsScreen() {
                     { color: colors.foreground, fontFamily: "Inter_700Bold" },
                   ]}
                 >
-                  {selectedMerchant?.business_name}
+                  {detailView === "promos"
+                    ? labelPromosTitle
+                    : selectedMerchant?.business_name}
                 </Text>
                 <Text
                   style={[
                     styles.detailPts,
-                    { color: accentColor, fontFamily: "Inter_600SemiBold" },
+                    {
+                      color:
+                        detailView === "promos"
+                          ? colors.mutedForeground
+                          : accentColor,
+                      fontFamily:
+                        detailView === "promos"
+                          ? "Inter_400Regular"
+                          : "Inter_600SemiBold",
+                    },
                   ]}
                 >
-                  {selectedMerchant?.customer_points} /{" "}
-                  {selectedMerchant?.max_points} pts
+                  {detailView === "promos"
+                    ? selectedMerchant?.business_name
+                    : `${selectedMerchant?.customer_points} / ${selectedMerchant?.max_points} pts`}
                 </Text>
               </View>
+              {(selectedMerchant?.promotions?.length ?? 0) > 0 &&
+                detailView === "rewards" && (
+                  <TouchableOpacity
+                    onPress={() => setDetailView("promos")}
+                    style={[
+                      styles.promoHeaderBtn,
+                      {
+                        backgroundColor: "#27AE6015",
+                        borderColor: "#27AE6040",
+                      },
+                    ]}
+                  >
+                    <Feather name="tag" size={iconSize(14)} color="#27AE60" />
+                    <Text
+                      style={[
+                        styles.promoHeaderBtnText,
+                        { color: "#27AE60", fontFamily: "Inter_600SemiBold" },
+                      ]}
+                    >
+                      {selectedMerchant?.promotions.length} {labelPromos}
+                    </Text>
+                  </TouchableOpacity>
+                )}
             </View>
 
-            {/* Liste des récompenses du commerçant */}
-            <FlatList
-              data={selectedMerchant?.rewards ?? []}
-              keyExtractor={(r) => r.id}
-              contentContainerStyle={{ padding: 16, paddingBottom: 60 }}
-              renderItem={({ item }) => {
-                const canRedeem = item.customer_points >= item.points_required;
-                const progress = Math.min(
-                  1,
-                  item.customer_points / item.points_required,
-                );
-                return (
-                  <Card style={{ marginBottom: 10 }}>
-                    <View style={styles.rewardRow}>
-                      <View
-                        style={[
-                          styles.rewardIcon,
-                          {
-                            backgroundColor: canRedeem
-                              ? accentColor + "20"
-                              : colors.muted,
-                          },
-                        ]}
-                      >
-                        <Feather
-                          name="gift"
-                          size={20}
-                          color={
-                            canRedeem ? accentColor : colors.mutedForeground
-                          }
-                        />
-                      </View>
-                      <View style={{ flex: 1, gap: 3 }}>
-                        <Text
-                          style={[
-                            styles.rewardName,
-                            {
-                              color: colors.foreground,
-                              fontFamily: "Inter_600SemiBold",
-                            },
-                          ]}
-                        >
-                          {item.name}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.rewardPoints,
-                            {
-                              color: canRedeem
-                                ? accentColor
-                                : colors.mutedForeground,
-                              fontFamily: "Inter_600SemiBold",
-                            },
-                          ]}
-                        >
-                          {item.customer_points} / {item.points_required} pts
-                        </Text>
-                        {canRedeem && (
-                          <Text
-                            style={{
-                              color: accentColor,
-                              fontSize: fs(10),
-                              fontFamily: "Inter_600SemiBold",
-                            }}
-                          >
-                            ✓{" "}
-                            {language === "ar"
-                              ? "متاح"
-                              : language === "en"
-                                ? "Available"
-                                : "Disponible"}
-                          </Text>
-                        )}
+            {/* ── Vue Récompenses ── */}
+            {detailView === "rewards" && (
+              <FlatList
+                data={selectedMerchant?.rewards ?? []}
+                keyExtractor={(r) => r.id}
+                contentContainerStyle={{ padding: 16, paddingBottom: 60 }}
+                renderItem={({ item }) => {
+                  const canRedeem =
+                    item.customer_points >= item.points_required;
+                  const progress = Math.min(
+                    1,
+                    item.customer_points / item.points_required,
+                  );
+
+                  // ✅ Expiration
+                  const expiryInfo = getExpiryInfo(item.expiry_date);
+                  const isExpired = expiryInfo?.isExpired ?? false;
+                  const canUse = canRedeem && !isExpired;
+
+                  return (
+                    <Card style={{ marginBottom: 10 }}>
+                      <View style={styles.rewardRow}>
                         <View
                           style={[
-                            styles.progressTrack,
-                            { backgroundColor: colors.border },
-                          ]}
-                        >
-                          <View
-                            style={[
-                              styles.progressFill,
-                              {
-                                width: `${(progress * 100).toFixed(0)}%` as any,
-                                backgroundColor: canRedeem
-                                  ? accentColor
-                                  : colors.primary,
-                              },
-                            ]}
-                          />
-                        </View>
-                      </View>
-                      <TouchableOpacity
-                        onPress={() =>
-                          canRedeem ? handleGenerateToken(item) : null
-                        }
-                        activeOpacity={canRedeem ? 0.8 : 1}
-                        disabled={generatingToken}
-                        style={[
-                          styles.useBtn,
-                          {
-                            backgroundColor: canRedeem
-                              ? colors.primary
-                              : colors.border,
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.useBtnText,
+                            styles.rewardIcon,
                             {
-                              fontFamily: "Inter_600SemiBold",
-                              color: canRedeem
-                                ? "#fff"
-                                : colors.mutedForeground,
+                              backgroundColor: canUse
+                                ? accentColor + "20"
+                                : colors.muted,
                             },
                           ]}
                         >
-                          {generatingToken ? "..." : labelUse}
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => toggleFavorite(item.id)}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        style={{ marginTop: 6, alignItems: "center" }}
+                          <Feather
+                            name="gift"
+                            size={20}
+                            color={
+                              canUse ? accentColor : colors.mutedForeground
+                            }
+                          />
+                        </View>
+                        <View style={{ flex: 1, gap: 3 }}>
+                          <Text
+                            style={[
+                              styles.rewardName,
+                              {
+                                color: colors.foreground,
+                                fontFamily: "Inter_600SemiBold",
+                              },
+                            ]}
+                          >
+                            {item.name}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.rewardPoints,
+                              {
+                                color: canUse
+                                  ? accentColor
+                                  : colors.mutedForeground,
+                                fontFamily: "Inter_600SemiBold",
+                              },
+                            ]}
+                          >
+                            {item.customer_points} / {item.points_required} pts
+                          </Text>
+                          {canUse && (
+                            <Text
+                              style={{
+                                color: accentColor,
+                                fontSize: fs(10),
+                                fontFamily: "Inter_600SemiBold",
+                              }}
+                            >
+                              ✓{" "}
+                              {language === "ar"
+                                ? "متاح"
+                                : language === "en"
+                                  ? "Available"
+                                  : "Disponible"}
+                            </Text>
+                          )}
+                          <View
+                            style={[
+                              styles.progressTrack,
+                              { backgroundColor: colors.border },
+                            ]}
+                          >
+                            <View
+                              style={[
+                                styles.progressFill,
+                                {
+                                  width:
+                                    `${(progress * 100).toFixed(0)}%` as any,
+                                  backgroundColor: canUse
+                                    ? accentColor
+                                    : colors.primary,
+                                },
+                              ]}
+                            />
+                          </View>
+
+                          {/* ✅ Badge date d'expiration */}
+                          {expiryInfo && (
+                            <View
+                              style={[
+                                styles.expiryRow,
+                                { backgroundColor: expiryInfo.color + "15" },
+                              ]}
+                            >
+                              <Feather
+                                name="clock"
+                                size={iconSize(11)}
+                                color={expiryInfo.color}
+                              />
+                              <Text
+                                style={[
+                                  styles.expiryText,
+                                  {
+                                    color: expiryInfo.color,
+                                    fontFamily: "Inter_600SemiBold",
+                                  },
+                                ]}
+                              >
+                                {expiryInfo.label}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+
+                        <View style={{ alignItems: "center", gap: 8 }}>
+                          <TouchableOpacity
+                            onPress={() =>
+                              canUse ? handleGenerateToken(item) : null
+                            }
+                            activeOpacity={canUse ? 0.8 : 1}
+                            disabled={generatingToken || !canUse}
+                            style={[
+                              styles.useBtn,
+                              {
+                                backgroundColor: canUse
+                                  ? colors.primary
+                                  : colors.border,
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.useBtnText,
+                                {
+                                  fontFamily: "Inter_600SemiBold",
+                                  color: canUse
+                                    ? "#fff"
+                                    : colors.mutedForeground,
+                                },
+                              ]}
+                            >
+                              {generatingToken
+                                ? "..."
+                                : isExpired
+                                  ? language === "en"
+                                    ? "Expired"
+                                    : "Expirée"
+                                  : labelUse}
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => toggleFavorite(item.id)}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Feather
+                              name="star"
+                              size={20}
+                              color={
+                                favorites.includes(item.id)
+                                  ? "#F9A602"
+                                  : colors.mutedForeground
+                              }
+                              style={{
+                                opacity: favorites.includes(item.id) ? 1 : 0.35,
+                              }}
+                            />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </Card>
+                  );
+                }}
+              />
+            )}
+
+            {/* ── Vue Promotions ── */}
+            {detailView === "promos" && (
+              <FlatList
+                data={selectedMerchant?.promotions ?? []}
+                keyExtractor={(p) => p.id}
+                contentContainerStyle={{ padding: 16, paddingBottom: 60 }}
+                ListEmptyComponent={
+                  <View style={styles.empty}>
+                    <Feather
+                      name="tag"
+                      size={iconSize(36)}
+                      color={colors.mutedForeground}
+                    />
+                    <Text
+                      style={[
+                        styles.emptyText,
+                        {
+                          color: colors.mutedForeground,
+                          fontFamily: "Inter_400Regular",
+                        },
+                      ]}
+                    >
+                      {labelNoPromo}
+                    </Text>
+                  </View>
+                }
+                renderItem={({ item }) => {
+                  const meta = promoMeta(item.type);
+                  const isExpiringSoon = item.is_expiring_soon;
+                  const hoursLeft = item.hours_remaining
+                    ? Math.ceil(item.hours_remaining)
+                    : null;
+                  return (
+                    <Card style={{ marginBottom: 10 }}>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "flex-start",
+                          gap: 12,
+                        }}
                       >
-                        <Feather
-                          name={favorites.includes(item.id) ? "star" : "star"}
-                          size={20}
-                          color={
-                            favorites.includes(item.id)
-                              ? "#F9A602"
-                              : colors.mutedForeground
-                          }
-                          style={{
-                            opacity: favorites.includes(item.id) ? 1 : 0.35,
-                          }}
-                        />
-                      </TouchableOpacity>
-                    </View>
-                  </Card>
-                );
-              }}
-            />
+                        <View
+                          style={[
+                            styles.promoIcon,
+                            { backgroundColor: meta.color + "18" },
+                          ]}
+                        >
+                          <Feather
+                            name={meta.icon}
+                            size={iconSize(20)}
+                            color={meta.color}
+                          />
+                        </View>
+                        <View style={{ flex: 1, gap: 4 }}>
+                          <View
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              gap: 6,
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            <View
+                              style={[
+                                styles.promoTypeBadge,
+                                { backgroundColor: meta.color + "18" },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.promoTypeText,
+                                  {
+                                    color: meta.color,
+                                    fontFamily: "Inter_700Bold",
+                                  },
+                                ]}
+                              >
+                                {meta.label}
+                              </Text>
+                            </View>
+                            {isExpiringSoon && hoursLeft !== null && (
+                              <View
+                                style={[
+                                  styles.promoTypeBadge,
+                                  { backgroundColor: "#E74C3C18" },
+                                ]}
+                              >
+                                <Feather
+                                  name="clock"
+                                  size={iconSize(10)}
+                                  color="#E74C3C"
+                                />
+                                <Text
+                                  style={[
+                                    styles.promoTypeText,
+                                    {
+                                      color: "#E74C3C",
+                                      fontFamily: "Inter_700Bold",
+                                    },
+                                  ]}
+                                >
+                                  {hoursLeft}h
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                          <Text
+                            style={[
+                              styles.promoTitle,
+                              {
+                                color: colors.foreground,
+                                fontFamily: "Inter_700Bold",
+                              },
+                            ]}
+                          >
+                            {item.title}
+                          </Text>
+                          {item.description && (
+                            <Text
+                              style={[
+                                styles.promoDesc,
+                                {
+                                  color: colors.mutedForeground,
+                                  fontFamily: "Inter_400Regular",
+                                },
+                              ]}
+                            >
+                              {item.description}
+                            </Text>
+                          )}
+                          {item.ends_at && (
+                            <Text
+                              style={[
+                                styles.promoDate,
+                                {
+                                  color: colors.mutedForeground,
+                                  fontFamily: "Inter_400Regular",
+                                },
+                              ]}
+                            >
+                              {language === "ar"
+                                ? "تنتهي في"
+                                : language === "en"
+                                  ? "Until"
+                                  : "Jusqu'au"}{" "}
+                              {new Date(item.ends_at).toLocaleDateString(
+                                "fr-FR",
+                                { day: "2-digit", month: "long" },
+                              )}
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                    </Card>
+                  );
+                }}
+              />
+            )}
           </View>
         </View>
       </Modal>
@@ -872,7 +1260,11 @@ export default function CustomerRewardsScreen() {
                 {labelQRTitle}
               </Text>
               <TouchableOpacity onPress={() => setShowQR(false)}>
-                <Feather name="x" size={iconSize(22)} color={colors.mutedForeground} />
+                <Feather
+                  name="x"
+                  size={iconSize(22)}
+                  color={colors.mutedForeground}
+                />
               </TouchableOpacity>
             </View>
             {activeReward && (
@@ -1012,7 +1404,6 @@ const styles = StyleSheet.create({
   },
   groupName: { fontSize: fs(15) },
   groupSub: { fontSize: fs(12) },
-  groupProgressRow: { flexDirection: "row", justifyContent: "space-between" },
   groupPoints: { fontSize: fs(12) },
   reachableBadge: {
     paddingHorizontal: 10,
@@ -1020,6 +1411,45 @@ const styles = StyleSheet.create({
     borderRadius: 99,
   },
   reachableText: { color: "#fff", fontSize: fs(12) },
+  promoBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 99,
+    borderWidth: 1,
+  },
+  promoBadgeText: { fontSize: fs(10) },
+  promoHeaderBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 99,
+    borderWidth: 1,
+  },
+  promoHeaderBtnText: { fontSize: fs(12) },
+  promoIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  promoTypeBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 99,
+  },
+  promoTypeText: { fontSize: fs(11) },
+  promoTitle: { fontSize: fs(15) },
+  promoDesc: { fontSize: fs(13), lineHeight: 19 },
+  promoDate: { fontSize: fs(11), marginTop: 2 },
   detailCard: {
     flex: 1,
     marginTop: 60,
@@ -1053,6 +1483,18 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   progressFill: { height: 4, borderRadius: 99 },
+  // ✅ Expiration
+  expiryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 99,
+    alignSelf: "flex-start",
+    marginTop: 4,
+  },
+  expiryText: { fontSize: fs(11) },
   useBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99 },
   useBtnText: { fontSize: fs(13) },
   historyRow: { flexDirection: "row", alignItems: "center", gap: 12 },
@@ -1137,5 +1579,4 @@ const styles = StyleSheet.create({
     zIndex: 1000,
   },
   toastText: { color: "#fff", fontSize: fs(14), flex: 1 },
-  starBtn: { padding: 4, alignItems: "center", justifyContent: "center" },
 });

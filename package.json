@@ -10,7 +10,12 @@
   },
   "private": true,
   "devDependencies": {
-    "typescript": "~5.9.2",
-    "prettier": "^3.8.1"
+    "prettier": "^3.8.1",
+    "typescript": "~5.9.2"
+  },
+  "dependencies": {
+    "expo": "~54.0.34",
+    "expo-application": "^7.0.8",
+    "expo-device": "~8.0.10"
   }
 }

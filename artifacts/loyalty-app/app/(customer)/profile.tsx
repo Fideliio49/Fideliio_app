@@ -11,6 +11,7 @@ import {
   ScrollView,
   Modal,
   Share,
+  Image,
 } from "react-native";
 import { fs, iconSize } from "@/utils/responsive";
 import QRCode from "react-native-qrcode-svg";
@@ -24,6 +25,8 @@ import { useApp, Language, ACCENT_COLORS } from "@/context/AppContext";
 import { supabase } from "@/lib/supabase";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { AvatarPicker } from "@/components/AvatarPicker";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const LANGS: { code: Language; label: string; flag: string }[] = [
   { code: "fr", label: "Français", flag: "🇫🇷" },
@@ -154,7 +157,11 @@ function BottomModal({ visible, onClose, title, children, colors }: any) {
               {title}
             </Text>
             <TouchableOpacity onPress={onClose}>
-              <Feather name="x" size={iconSize(22)} color={colors.mutedForeground} />
+              <Feather
+                name="x"
+                size={iconSize(22)}
+                color={colors.mutedForeground}
+              />
             </TouchableOpacity>
           </View>
           {children}
@@ -237,6 +244,25 @@ export default function CustomerProfileScreen() {
     setTotalPoints(Math.max(0, pointsData?.total_points ?? 0));
   }
 
+  // ✅ Sauvegarder l'URL avatar après upload
+  async function handleAvatarUploaded(url: string) {
+    const avatarUrl = url || null; // ✅ "" → null pour la suppression
+    await supabase
+      .from("customers")
+      .update({ avatar_url: avatarUrl })
+      .eq("user_id", user!.id);
+    setCustomer((prev: any) => ({ ...prev, avatar_url: avatarUrl }));
+    showToast(
+      url
+        ? language === "en"
+          ? "✓ Photo updated"
+          : "✓ Photo mise à jour"
+        : language === "en"
+          ? "✓ Photo deleted"
+          : "✓ Photo supprimée",
+    );
+  }
+
   async function handleSaveInfo() {
     setSaving(true);
     try {
@@ -307,7 +333,51 @@ export default function CustomerProfileScreen() {
       ],
     );
   }
+  async function handleSwitchToMerchant() {
+    if (!user?.id) return;
+    try {
+      const { data: merchant } = await supabase
+        .from("merchants")
+        .select("id, business_name, subscription_started")
+        .eq("user_id", user.id)
+        .maybeSingle();
 
+      if (!merchant) return;
+
+      // ✅ Seul indicateur fiable — subscription_started
+      if (!merchant.subscription_started) {
+        await AsyncStorage.setItem("@active_role", "merchant");
+        router.replace("/auth/merchant-setup");
+        return;
+      }
+
+      // Commerce configuré → vérifier subscription
+      const { data: sub } = await supabase.rpc("get_merchant_subscription", {
+        p_merchant_id: merchant.id,
+      });
+      const subscription = sub?.[0];
+
+      if (!subscription) {
+        await supabase.rpc("start_merchant_trial", {
+          p_merchant_id: merchant.id,
+        });
+        await AsyncStorage.setItem("@active_role", "merchant");
+        router.replace("/(merchant)/home");
+        return;
+      }
+
+      if (!subscription.is_active) {
+        await AsyncStorage.setItem("@active_role", "merchant");
+        router.replace("/auth/subscription-expired");
+        return;
+      }
+
+      await AsyncStorage.setItem("@active_role", "merchant");
+      router.replace("/(merchant)/home");
+    } catch (e: any) {
+      Alert.alert("Erreur", e?.message || "Une erreur s'est produite.");
+    }
+  }
   async function handleShareQr() {
     if (!customer?.qr_code) return;
     try {
@@ -316,8 +386,6 @@ export default function CustomerProfileScreen() {
   }
 
   const tierColor = TIER_COLORS[customer?.tier ?? "bronze"];
-
-  // ── Labels traduits ──
   const labelMyInfo =
     language === "ar"
       ? "معلوماتي"
@@ -357,6 +425,12 @@ export default function CustomerProfileScreen() {
         : "Supprimer mon compte";
   const labelShare =
     language === "ar" ? "مشاركة" : language === "en" ? "Share" : "Partager";
+  const labelSwitchMerchant =
+    language === "ar"
+      ? "التبديل إلى وضع التاجر"
+      : language === "en"
+        ? "Switch to merchant mode"
+        : "Passer en mode commerçant";
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -376,23 +450,24 @@ export default function CustomerProfileScreen() {
             },
           ]}
         >
-          <View
-            style={[styles.avatarWrap, { backgroundColor: accentColor + "20" }]}
-          >
-            <Text
-              style={[
-                styles.avatarText,
-                { color: accentColor, fontFamily: "Inter_700Bold" },
-              ]}
-            >
-              {(customer?.first_name?.[0] ?? "").toUpperCase()}
-              {(customer?.last_name?.[0] ?? "").toUpperCase()}
-            </Text>
-          </View>
+          {/* ✅ AvatarPicker customer */}
+          <AvatarPicker
+            userId={user?.id ?? ""}
+            currentUrl={customer?.avatar_url}
+            size={84}
+            initials={`${(customer?.first_name?.[0] ?? "").toUpperCase()}${(customer?.last_name?.[0] ?? "").toUpperCase()}`}
+            accentColor={accentColor}
+            folder="customer"
+            onUploaded={handleAvatarUploaded}
+          />
           <Text
             style={[
               styles.heroName,
-              { color: colors.foreground, fontFamily: "Inter_700Bold" },
+              {
+                color: colors.foreground,
+                fontFamily: "Inter_700Bold",
+                marginTop: 8,
+              },
             ]}
           >
             {customer?.first_name} {customer?.last_name}
@@ -452,14 +527,14 @@ export default function CustomerProfileScreen() {
 
           {customer?.qr_code && (
             <View style={styles.qrSection}>
-              <View style={styles.qrWrap}>
+              {/*<View style={styles.qrWrap}>
                 <QRCode
                   value={customer.qr_code}
                   size={120}
                   color="#1a1a2e"
                   backgroundColor="white"
                 />
-              </View>
+              </View>*/}
               <Text
                 style={[
                   styles.qrCode,
@@ -475,7 +550,11 @@ export default function CustomerProfileScreen() {
                 onPress={handleShareQr}
                 style={[styles.shareBtn, { borderColor: accentColor + "40" }]}
               >
-                <Feather name="share-2" size={iconSize(14)} color={accentColor} />
+                <Feather
+                  name="share-2"
+                  size={iconSize(14)}
+                  color={accentColor}
+                />
                 <Text
                   style={[
                     styles.shareText,
@@ -571,23 +650,30 @@ export default function CustomerProfileScreen() {
         {/* ── COMPTE ── */}
         <SettingsSection title={labelAccount}>
           <SettingsRow
+            icon="briefcase"
+            iconColor="#2C3E8C"
+            label={labelSwitchMerchant}
+            onPress={handleSwitchToMerchant}
+          />
+          <Separator />
+          <SettingsRow
             icon="log-out"
             iconColor="#E67E22"
             label={t("profile.logout")}
             onPress={handleLogout}
           />
-          <Separator />
+          {/*<Separator />
           <SettingsRow
             icon="trash-2"
             iconColor="#E74C3C"
             label={labelDelete}
             onPress={handleDeleteAccount}
             destructive
-          />
+          />*/}
         </SettingsSection>
       </ScrollView>
 
-      {/* ── Modal Mes informations ── */}
+      {/* ── Modals ── */}
       <BottomModal
         visible={showInfoModal}
         onClose={() => setShowInfoModal(false)}
@@ -642,7 +728,6 @@ export default function CustomerProfileScreen() {
         </KeyboardAwareScrollView>
       </BottomModal>
 
-      {/* ── Modal Langue ── */}
       <BottomModal
         visible={showLangModal}
         onClose={() => setShowLangModal(false)}
@@ -666,7 +751,9 @@ export default function CustomerProfileScreen() {
                 },
               ]}
             >
-              <Text allowFontScaling={false} style={{ fontSize: fs(24) }}>{l.flag}</Text>
+              <Text allowFontScaling={false} style={{ fontSize: fs(24) }}>
+                {l.flag}
+              </Text>
               <Text
                 allowFontScaling={false}
                 style={{
@@ -689,7 +776,6 @@ export default function CustomerProfileScreen() {
         </View>
       </BottomModal>
 
-      {/* ── Modal Couleur ── */}
       <BottomModal
         visible={showColorModal}
         onClose={() => setShowColorModal(false)}
@@ -732,7 +818,6 @@ export default function CustomerProfileScreen() {
         </View>
       </BottomModal>
 
-      {/* ── Toast ── */}
       {toastVisible && (
         <View
           style={[
@@ -759,15 +844,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     gap: 4,
   },
-  avatarWrap: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8,
-  },
-  avatarText: { fontSize: fs(28) },
   heroName: { fontSize: fs(20) },
   heroSub: { fontSize: fs(13), marginTop: 2 },
   tierRow: {

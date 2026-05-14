@@ -7,8 +7,9 @@ import {
   Platform,
   TouchableOpacity,
   ScrollView,
+  Image,
 } from "react-native";
-import { fs, iconSize } from "@/utils/responsive";
+import { fs, iconSize, sp } from "@/utils/responsive";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
@@ -30,9 +31,64 @@ const CAT_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
   other: "star",
 };
 
+// ✅ Composant avatar commerçant — affiche le logo ou les initiales
+function MerchantAvatar({
+  logoUrl,
+  name,
+  accentColor,
+  size = 48,
+}: {
+  logoUrl?: string | null;
+  name: string;
+  accentColor: string;
+  size?: number;
+}) {
+  const colors = useColors();
+  const initial = (name?.[0] ?? "M").toUpperCase();
+
+  if (logoUrl) {
+    return (
+      <Image
+        source={{ uri: logoUrl }}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size * 0.25,
+          borderWidth: 1,
+          borderColor: accentColor + "30",
+        }}
+        resizeMode="cover"
+      />
+    );
+  }
+
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size * 0.25,
+        backgroundColor: accentColor + "20",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Text
+        style={{
+          color: accentColor,
+          fontSize: fs(size * 0.38),
+          fontFamily: "Inter_700Bold",
+        }}
+      >
+        {initial}
+      </Text>
+    </View>
+  );
+}
+
 export default function MerchantsScreen() {
   const colors = useColors();
-  const { user, language } = useApp();
+  const { user, language, accentColor } = useApp();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const [search, setSearch] = useState("");
@@ -41,7 +97,6 @@ export default function MerchantsScreen() {
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
-  // ✅ Labels traduits dynamiquement
   const CAT_LABELS: Record<string, string> = {
     all: t("merchants.all"),
     restaurant: t("auth.categories.restaurant"),
@@ -71,13 +126,33 @@ export default function MerchantsScreen() {
       .eq("user_id", user.id)
       .single();
     if (!customerData) return;
+
+    // ✅ Récupérer aussi avatar_url depuis merchants via une jointure
     const { data: merchantPoints } = await supabase
       .from("customer_merchant_points")
       .select(
         "merchant_id, total_points, visit_count, last_visit, business_name, category, logo_url, points_rate",
       )
       .eq("customer_id", customerData.id);
-    setMerchants(merchantPoints ?? []);
+
+    if (!merchantPoints) {
+      setMerchants([]);
+      return;
+    }
+
+    // ✅ Enrichir avec avatar_url depuis la table merchants
+    const merchantIds = merchantPoints.map((m: any) => m.merchant_id);
+    const { data: merchantDetails } = await supabase
+      .from("merchants")
+      .select("id, avatar_url")
+      .in("id", merchantIds);
+
+    const enriched = merchantPoints.map((m: any) => {
+      const detail = merchantDetails?.find((d: any) => d.id === m.merchant_id);
+      return { ...m, avatar_url: detail?.avatar_url ?? m.logo_url ?? null };
+    });
+
+    setMerchants(enriched);
   }
 
   const filtered = merchants.filter((m) => {
@@ -141,82 +216,141 @@ export default function MerchantsScreen() {
         keyExtractor={(m) => m.merchant_id}
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
-        renderItem={({ item }) => (
-          <Card style={styles.merchantCard}>
-            <View style={styles.merchantRow}>
-              <View
-                style={[
-                  styles.merchantIcon,
-                  { backgroundColor: colors.primary + "20" },
-                ]}
-              >
-                <Feather
-                  name={CAT_ICONS[item.category] ?? "star"}
-                  size={iconSize(22)}
-                  color={colors.primary}
+        renderItem={({ item }) => {
+          // ✅ Mode bannière si logo, mode compact sinon
+          const hasLogo = !!item.avatar_url;
+          return hasLogo ? (
+            // ── Mode bannière ──
+            <Card
+              style={[styles.merchantCard, { padding: 0, overflow: "hidden" }]}
+            >
+              <Image
+                source={{ uri: item.avatar_url }}
+                style={styles.bannerImage}
+                resizeMode="cover"
+              />
+              <View style={styles.bannerContent}>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={[
+                      styles.merchantName,
+                      { color: colors.foreground, fontFamily: "Inter_700Bold" },
+                    ]}
+                  >
+                    {item.business_name}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.merchantCategory,
+                      {
+                        color: colors.mutedForeground,
+                        fontFamily: "Inter_400Regular",
+                      },
+                    ]}
+                  >
+                    {CAT_LABELS[item.category] ?? item.category} ·{" "}
+                    {visitLabel(item.visit_count)}
+                  </Text>
+                </View>
+                <View style={styles.merchantPoints}>
+                  <Text
+                    style={[
+                      styles.pointsValue,
+                      { color: "#F9A602", fontFamily: "Inter_700Bold" },
+                    ]}
+                  >
+                    {item.total_points}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.pointsLabel,
+                      {
+                        color: colors.mutedForeground,
+                        fontFamily: "Inter_400Regular",
+                      },
+                    ]}
+                  >
+                    {t("common.points").toLowerCase()}
+                  </Text>
+                </View>
+              </View>
+            </Card>
+          ) : (
+            // ── Mode compact ──
+            <Card style={styles.merchantCard}>
+              <View style={styles.merchantRow}>
+                <MerchantAvatar
+                  logoUrl={null}
+                  name={item.business_name}
+                  accentColor={accentColor}
+                  size={48}
                 />
+                <View style={styles.merchantInfo}>
+                  <Text
+                    style={[
+                      styles.merchantName,
+                      { color: colors.foreground, fontFamily: "Inter_700Bold" },
+                    ]}
+                  >
+                    {item.business_name}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.merchantCategory,
+                      {
+                        color: colors.mutedForeground,
+                        fontFamily: "Inter_400Regular",
+                      },
+                    ]}
+                  >
+                    {CAT_LABELS[item.category] ?? item.category}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.merchantVisits,
+                      {
+                        color: colors.mutedForeground,
+                        fontFamily: "Inter_400Regular",
+                      },
+                    ]}
+                  >
+                    {visitLabel(item.visit_count)}
+                  </Text>
+                </View>
+                <View style={styles.merchantPoints}>
+                  <Text
+                    style={[
+                      styles.pointsValue,
+                      { color: "#F9A602", fontFamily: "Inter_700Bold" },
+                    ]}
+                  >
+                    {item.total_points}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.pointsLabel,
+                      {
+                        color: colors.mutedForeground,
+                        fontFamily: "Inter_400Regular",
+                      },
+                    ]}
+                  >
+                    {t("common.points").toLowerCase()}
+                  </Text>
+                </View>
               </View>
-              <View style={styles.merchantInfo}>
-                <Text
-                  style={[
-                    styles.merchantName,
-                    { color: colors.foreground, fontFamily: "Inter_700Bold" },
-                  ]}
-                >
-                  {item.business_name}
-                </Text>
-                <Text
-                  style={[
-                    styles.merchantCategory,
-                    {
-                      color: colors.mutedForeground,
-                      fontFamily: "Inter_400Regular",
-                    },
-                  ]}
-                >
-                  {CAT_LABELS[item.category] ?? item.category}
-                </Text>
-                <Text
-                  style={[
-                    styles.merchantVisits,
-                    {
-                      color: colors.mutedForeground,
-                      fontFamily: "Inter_400Regular",
-                    },
-                  ]}
-                >
-                  {visitLabel(item.visit_count)}
-                </Text>
-              </View>
-              <View style={styles.merchantPoints}>
-                <Text
-                  style={[
-                    styles.pointsValue,
-                    { color: "#F9A602", fontFamily: "Inter_700Bold" },
-                  ]}
-                >
-                  {item.total_points}
-                </Text>
-                <Text
-                  style={[
-                    styles.pointsLabel,
-                    {
-                      color: colors.mutedForeground,
-                      fontFamily: "Inter_400Regular",
-                    },
-                  ]}
-                >
-                  {t("common.points").toLowerCase()}
-                </Text>
-              </View>
-            </View>
-          </Card>
-        )}
+            </Card>
+          );
+        }}
         contentContainerStyle={[styles.list, { paddingBottom: 100 }]}
         scrollEnabled={filtered.length > 0}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Feather name="map-pin" size={iconSize(40)} color={colors.mutedForeground} />
+            <Feather
+              name="map-pin"
+              size={iconSize(40)}
+              color={colors.mutedForeground}
+            />
             <Text
               style={[
                 styles.emptyText,
@@ -252,14 +386,20 @@ const styles = StyleSheet.create({
   empty: { alignItems: "center", paddingTop: 80, gap: 12 },
   emptyText: { fontSize: fs(15), textAlign: "center" },
   merchantCard: { marginBottom: 10 },
-  merchantRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  merchantIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
+  // ✅ Banner styles
+  bannerImage: {
+    width: "100%",
+    height: 130,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
   },
+  bannerContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 12,
+  },
+  merchantRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   merchantInfo: { flex: 1, gap: 2 },
   merchantName: { fontSize: fs(15) },
   merchantCategory: { fontSize: fs(12) },

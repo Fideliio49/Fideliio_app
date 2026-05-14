@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { fs, iconSize } from "@/utils/responsive";
 import {
   View,
@@ -10,6 +10,7 @@ import {
   ScrollView,
   StatusBar,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 import { useFocusEffect } from "expo-router";
@@ -19,13 +20,15 @@ import { useTranslation } from "react-i18next";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
 import { supabase } from "@/lib/supabase";
+import ViewShot from "react-native-view-shot";
+import * as MediaLibrary from "expo-media-library";
 
 type MerchantProgress = {
   merchant_id: string;
   business_name: string;
   current_points: number;
   max_points: number;
-  progress: number; // 0-100
+  progress: number;
 };
 
 export default function CustomerQrCodeScreen() {
@@ -39,6 +42,10 @@ export default function CustomerQrCodeScreen() {
     [],
   );
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  // ✅ Ref pour capturer la carte QR en image
+  const qrCardRef = useRef<any>(null);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const bottomPad = Platform.OS === "web" ? 34 : 0;
@@ -68,6 +75,12 @@ export default function CustomerQrCodeScreen() {
       : language === "en"
         ? "Share my QR Code"
         : "Partager mon QR Code";
+  const labelSave =
+    language === "ar"
+      ? "حفظ في المعرض"
+      : language === "en"
+        ? "Save to gallery"
+        : "Enregistrer dans la galerie";
   const labelUnavailable =
     language === "ar"
       ? "رمز QR غير متوفر"
@@ -116,7 +129,6 @@ export default function CustomerQrCodeScreen() {
       if (error) return;
       setCustomer(customerData);
 
-      // Points totaux
       const { data: pointsData } = await supabase
         .from("customer_total_points")
         .select("total_points")
@@ -124,7 +136,6 @@ export default function CustomerQrCodeScreen() {
         .single();
       setTotalPoints(Math.max(0, pointsData?.total_points ?? 0));
 
-      // ✅ Charger la progression par commerçant (points + max récompense)
       const { data: merchantPoints } = await supabase
         .from("customer_merchant_points")
         .select("merchant_id, total_points, business_name")
@@ -138,27 +149,6 @@ export default function CustomerQrCodeScreen() {
           .in("merchant_id", merchantIds)
           .eq("is_active", true);
 
-        const progress: MerchantProgress[] = merchantPoints
-          .map((mp: any) => {
-            const merchantRewards = (rewards ?? []).filter(
-              (r: any) => r.merchant_id === mp.merchant_id,
-            );
-            if (merchantRewards.length === 0) return null;
-            const maxPts = Math.max(
-              ...merchantRewards.map((r: any) => r.points_required),
-            );
-            const current = Math.max(0, mp.total_points ?? 0);
-            return {
-              merchant_id: mp.merchant_id,
-              business_name: mp.business_name,
-              current_points: current,
-              max_points: maxPts,
-              progress: Math.min(100, Math.round((current / maxPts) * 100)),
-            };
-          })
-          .filter(Boolean) as MerchantProgress[];
-
-        // Trier : plafond atteint en premier, puis par progression décroissante
         progress.sort((a, b) => b.progress - a.progress);
         setMerchantProgress(progress);
       }
@@ -170,9 +160,61 @@ export default function CustomerQrCodeScreen() {
 
   const qrCodeValue = customer?.qr_code ?? null;
 
+  // ✅ Capturer la carte QR en URI
+  async function captureQrCard(): Promise<string | null> {
+    try {
+      if (!qrCardRef.current) return null;
+      const uri = await qrCardRef.current.capture();
+      return uri as string;
+    } catch {
+      return null;
+    }
+  }
+
+  // ✅ Sauvegarder dans la galerie photo
+  async function handleSaveToGallery() {
+    setSaving(true);
+    try {
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          language === "en" ? "Permission required" : "Permission requise",
+          language === "en"
+            ? "Gallery access is needed to save the QR code."
+            : "L'accès à la galerie est nécessaire pour enregistrer le QR code.",
+        );
+        return;
+      }
+      const uri = await captureQrCard();
+      if (!uri) throw new Error("Capture échouée");
+      await MediaLibrary.saveToLibraryAsync(uri);
+      Alert.alert(
+        "✓",
+        language === "ar"
+          ? "تم الحفظ في المعرض!"
+          : language === "en"
+            ? "Saved to gallery!"
+            : "Enregistré dans la galerie !",
+      );
+    } catch (e: any) {
+      Alert.alert("Erreur", e?.message || "Sauvegarde échouée.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // ✅ Partager le QR code — image sur iOS, texte sur Android
   async function handleShare() {
     if (!qrCodeValue) return;
     try {
+      if (Platform.OS === "ios") {
+        const uri = await captureQrCard();
+        if (uri) {
+          await Share.share({ url: uri });
+          return;
+        }
+      }
+      // Fallback texte (Android ou si capture échoue)
       await Share.share({
         message: `${language === "ar" ? "رمز Fideliio الخاص بي:" : language === "en" ? "My Fideliio code:" : "Mon code Fideliio :"} ${qrCodeValue}`,
       });
@@ -209,7 +251,11 @@ export default function CustomerQrCodeScreen() {
           },
         ]}
       >
-        <Feather name="alert-circle" size={iconSize(48)} color={colors.mutedForeground} />
+        <Feather
+          name="alert-circle"
+          size={iconSize(48)}
+          color={colors.mutedForeground}
+        />
         <Text
           style={[
             styles.title,
@@ -256,49 +302,55 @@ export default function CustomerQrCodeScreen() {
         {labelSubtitle}
       </Text>
 
-      {/* ── QR Card ── */}
-      <View
-        style={[
-          styles.card,
-          { backgroundColor: colors.card, shadowColor: "#000" },
-        ]}
+      {/* ✅ ViewShot enveloppe la carte QR pour la capture image */}
+      <ViewShot
+        ref={qrCardRef}
+        options={{ format: "png", quality: 1 }}
+        style={styles.viewShot}
       >
-        <View style={styles.qrWrap}>
-          <QRCode
-            value={qrCodeValue}
-            size={220}
-            color="#1a1a2e"
-            backgroundColor="white"
-          />
-        </View>
-        <Text
+        <View
           style={[
-            styles.userName,
-            { color: colors.foreground, fontFamily: "Inter_700Bold" },
+            styles.card,
+            { backgroundColor: colors.card, shadowColor: "#000" },
           ]}
         >
-          {customer?.first_name} {customer?.last_name}
-        </Text>
-        <View style={styles.pointsPill}>
-          <Feather name="star" size={iconSize(14)} color="#F9A602" />
+          <View style={styles.qrWrap}>
+            <QRCode
+              value={qrCodeValue}
+              size={220}
+              color="#1a1a2e"
+              backgroundColor="white"
+            />
+          </View>
           <Text
             style={[
-              styles.pointsText,
-              { color: "#F9A602", fontFamily: "Inter_700Bold" },
+              styles.userName,
+              { color: colors.foreground, fontFamily: "Inter_700Bold" },
             ]}
           >
-            {totalPoints} {t("common.points").toLowerCase()}
+            {customer?.first_name} {customer?.last_name}
+          </Text>
+          <View style={styles.pointsPill}>
+            <Feather name="star" size={iconSize(14)} color="#F9A602" />
+            <Text
+              style={[
+                styles.pointsText,
+                { color: "#F9A602", fontFamily: "Inter_700Bold" },
+              ]}
+            >
+              {totalPoints} {t("common.points").toLowerCase()}
+            </Text>
+          </View>
+          <Text
+            style={[
+              styles.codeText,
+              { color: colors.mutedForeground, fontFamily: "Inter_400Regular" },
+            ]}
+          >
+            {qrCodeValue}
           </Text>
         </View>
-        <Text
-          style={[
-            styles.codeText,
-            { color: colors.mutedForeground, fontFamily: "Inter_400Regular" },
-          ]}
-        >
-          {qrCodeValue}
-        </Text>
-      </View>
+      </ViewShot>
 
       {/* ✅ Progression par commerçant */}
       {merchantProgress.length > 0 && (
@@ -365,7 +417,6 @@ export default function CustomerQrCodeScreen() {
                     {mp.current_points}/{mp.max_points}
                   </Text>
                 </View>
-                {/* Barre de progression */}
                 <View
                   style={[styles.barTrack, { backgroundColor: colors.border }]}
                 >
@@ -379,7 +430,6 @@ export default function CustomerQrCodeScreen() {
                     ]}
                   />
                 </View>
-                {/* Message restant / plafond */}
                 <Text
                   style={[
                     styles.progressHint,
@@ -420,29 +470,59 @@ export default function CustomerQrCodeScreen() {
         </Text>
       </View>
 
-      {/* Share */}
-      <TouchableOpacity
-        onPress={handleShare}
-        style={[
-          styles.shareBtn,
-          {
-            backgroundColor: colors.primary + "12",
-            borderColor: colors.primary + "40",
-            borderRadius: colors.radius,
-          },
-        ]}
-        activeOpacity={0.8}
-      >
-        <Feather name="share-2" size={iconSize(18)} color={colors.primary} />
-        <Text
+      {/* ✅ Boutons : Enregistrer + Partager */}
+      <View style={styles.actionsRow}>
+        <TouchableOpacity
+          onPress={handleSaveToGallery}
+          disabled={saving}
+          activeOpacity={0.8}
           style={[
-            styles.shareBtnText,
-            { color: colors.primary, fontFamily: "Inter_600SemiBold" },
+            styles.actionBtn,
+            {
+              backgroundColor: accentColor + "12",
+              borderColor: accentColor + "40",
+              borderRadius: colors.radius,
+            },
           ]}
         >
-          {labelShare}
-        </Text>
-      </TouchableOpacity>
+          {saving ? (
+            <ActivityIndicator size="small" color={accentColor} />
+          ) : (
+            <Feather name="download" size={iconSize(18)} color={accentColor} />
+          )}
+          <Text
+            style={[
+              styles.actionBtnText,
+              { color: accentColor, fontFamily: "Inter_600SemiBold" },
+            ]}
+          >
+            {labelSave}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={handleShare}
+          activeOpacity={0.8}
+          style={[
+            styles.actionBtn,
+            {
+              backgroundColor: colors.primary + "12",
+              borderColor: colors.primary + "40",
+              borderRadius: colors.radius,
+            },
+          ]}
+        >
+          <Feather name="share-2" size={iconSize(18)} color={colors.primary} />
+          <Text
+            style={[
+              styles.actionBtnText,
+              { color: colors.primary, fontFamily: "Inter_600SemiBold" },
+            ]}
+          >
+            {labelShare}
+          </Text>
+        </TouchableOpacity>
+      </View>
     </ScrollView>
   );
 }
@@ -452,6 +532,7 @@ const styles = StyleSheet.create({
   scroll: { paddingHorizontal: 24, alignItems: "center" },
   title: { fontSize: fs(24), marginBottom: 6, alignSelf: "flex-start" },
   subtitle: { fontSize: fs(14), marginBottom: 28, alignSelf: "flex-start" },
+  viewShot: { width: "100%", marginBottom: 20 },
   card: {
     width: "100%",
     borderRadius: 24,
@@ -463,7 +544,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 16,
     elevation: 4,
-    marginBottom: 20,
   },
   qrWrap: {
     padding: 16,
@@ -483,7 +563,6 @@ const styles = StyleSheet.create({
   },
   pointsText: { fontSize: fs(15) },
   codeText: { fontSize: fs(12), letterSpacing: 1.5, marginTop: 4 },
-  // ✅ Section progression
   progressSection: {
     width: "100%",
     borderRadius: 16,
@@ -505,7 +584,6 @@ const styles = StyleSheet.create({
   barTrack: { height: 6, borderRadius: 99, overflow: "hidden" },
   barFill: { height: 6, borderRadius: 99 },
   progressHint: { fontSize: fs(11) },
-  // Hint & share
   hintBox: {
     flexDirection: "row",
     gap: 10,
@@ -517,15 +595,16 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
   },
   hintText: { flex: 1, fontSize: fs(13), lineHeight: 19 },
-  shareBtn: {
+  actionsRow: { flexDirection: "row", gap: 12, width: "100%" },
+  actionBtn: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderWidth: 1.5,
-    width: "100%",
     justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderWidth: 1.5,
   },
-  shareBtnText: { fontSize: fs(15) },
+  actionBtnText: { fontSize: fs(13) },
 });

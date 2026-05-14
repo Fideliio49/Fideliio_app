@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useState, useCallback, useRef } from "react";
 import {
   View,
@@ -12,8 +13,7 @@ import {
   Modal,
   TextInput,
 } from "react-native";
-import { fs, iconSize } from "@/utils/responsive";
-import QRCode from "react-native-qrcode-svg";
+import { fs, iconSize, sp } from "@/utils/responsive";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useTranslation } from "react-i18next";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -24,6 +24,7 @@ import { useApp, Language, ACCENT_COLORS } from "@/context/AppContext";
 import { supabase } from "@/lib/supabase";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { AvatarPicker } from "@/components/AvatarPicker";
 
 const LANGS: { code: Language; label: string; flag: string }[] = [
   { code: "fr", label: "Français", flag: "🇫🇷" },
@@ -167,7 +168,11 @@ function BottomModal({ visible, onClose, title, children, colors }: any) {
               {title}
             </Text>
             <TouchableOpacity onPress={onClose}>
-              <Feather name="x" size={iconSize(22)} color={colors.mutedForeground} />
+              <Feather
+                name="x"
+                size={iconSize(22)}
+                color={colors.mutedForeground}
+              />
             </TouchableOpacity>
           </View>
           {children}
@@ -203,12 +208,16 @@ export default function MerchantProfileScreen() {
   const [merchant, setMerchant] = useState<any>(null);
   const [totalCustomers, setTotalCustomers] = useState(0);
   const [notifications, setNotifications] = useState(true);
+
+  // Modals
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [showRateModal, setShowRateModal] = useState(false);
   const [showPresetsModal, setShowPresetsModal] = useState(false);
   const [showLangModal, setShowLangModal] = useState(false);
   const [showColorModal, setShowColorModal] = useState(false);
+  const [showTierModal, setShowTierModal] = useState(false); // ✅ nouveau
 
+  // Champs
   const [firstName, setFirstName] = useState(user?.firstName ?? "");
   const [lastName, setLastName] = useState(user?.lastName ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
@@ -221,6 +230,11 @@ export default function MerchantProfileScreen() {
   const [presets, setPresets] = useState<number[]>(DEFAULT_PRESETS);
   const [presetsInput, setPresetsInput] = useState("10,25,50,100,200,500");
   const [savingPresets, setSavingPresets] = useState(false);
+
+  // ✅ Seuils tier
+  const [silverThreshold, setSilverThreshold] = useState("1000");
+  const [goldThreshold, setGoldThreshold] = useState("5000");
+  const [savingTiers, setSavingTiers] = useState(false);
 
   const [toastMsg, setToastMsg] = useState("");
   const [toastType, setToastType] = useState<"success" | "error">("success");
@@ -254,6 +268,8 @@ export default function MerchantProfileScreen() {
       setBizName(data.business_name ?? "");
       setCategory(data.category ?? "other");
       setRate(String(data.points_rate ?? 1));
+      setSilverThreshold(String(data.silver_threshold ?? 1000));
+      setGoldThreshold(String(data.gold_threshold ?? 5000));
       if (data.quick_points) {
         const pts = data.quick_points
           .split(",")
@@ -262,8 +278,6 @@ export default function MerchantProfileScreen() {
         setPresets(pts);
         setPresetsInput(data.quick_points);
       }
-
-      // ✅ Charger les stats depuis merchant_stats
       const { data: statsData } = await supabase
         .from("merchant_stats")
         .select("total_customers")
@@ -271,6 +285,22 @@ export default function MerchantProfileScreen() {
         .maybeSingle();
       setTotalCustomers(statsData?.total_customers ?? 0);
     }
+  }
+
+  async function handleLogoUploaded(url: string) {
+    if (!merchant?.id) return;
+    await supabase
+      .from("merchants")
+      .update({ avatar_url: url })
+      .eq("id", merchant.id);
+    setMerchant((prev: any) => ({ ...prev, avatar_url: url }));
+    showToast(
+      language === "ar"
+        ? "✓ تم تحديث الشعار"
+        : language === "en"
+          ? "✓ Logo updated"
+          : "✓ Logo mis à jour",
+    );
   }
 
   async function handleSaveInfo() {
@@ -356,6 +386,48 @@ export default function MerchantProfileScreen() {
     }
   }
 
+  // ✅ Sauvegarder les seuils tier
+  async function handleSaveTiers() {
+    const silver = parseInt(silverThreshold);
+    const gold = parseInt(goldThreshold);
+
+    if (isNaN(silver) || silver <= 0) {
+      showToast(
+        language === "en"
+          ? "Invalid Silver threshold"
+          : "Seuil Silver invalide",
+        "error",
+      );
+      return;
+    }
+    if (isNaN(gold) || gold <= silver) {
+      showToast(
+        language === "en"
+          ? "Gold must be greater than Silver"
+          : "Gold doit être supérieur à Silver",
+        "error",
+      );
+      return;
+    }
+
+    setSavingTiers(true);
+    try {
+      if (merchant?.id) {
+        await supabase
+          .from("merchants")
+          .update({ silver_threshold: silver, gold_threshold: gold })
+          .eq("id", merchant.id);
+      }
+      await loadMerchant();
+      setShowTierModal(false);
+      showToast("✓ " + t("profile.saveSuccess"));
+    } catch {
+      showToast(t("common.error"), "error");
+    } finally {
+      setSavingTiers(false);
+    }
+  }
+
   async function handleLogout() {
     Alert.alert(t("profile.logout"), "", [
       { text: t("common.cancel"), style: "cancel" },
@@ -370,24 +442,30 @@ export default function MerchantProfileScreen() {
     ]);
   }
 
-  async function handleDeleteAccount() {
+  async function handleSwitchToCustomer() {
     Alert.alert(
-      isRTL ? "حذف الحساب؟" : "Supprimer votre compte ?",
-      isRTL
-        ? "هذا الإجراء لا يمكن التراجع عنه."
-        : "Cette action est irréversible.",
+      language === "ar"
+        ? "التبديل إلى وضع العميل"
+        : language === "en"
+          ? "Switch to customer mode"
+          : "Passer en mode client",
+      language === "ar"
+        ? "ستنتقل إلى مساحة العميل"
+        : language === "en"
+          ? "You'll be taken to your customer space"
+          : "Vous allez accéder à votre espace client",
       [
         { text: t("common.cancel"), style: "cancel" },
         {
-          text: isRTL ? "حذف نهائي" : "Supprimer définitivement",
-          style: "destructive",
+          text:
+            language === "ar"
+              ? "تبديل"
+              : language === "en"
+                ? "Switch"
+                : "Basculer",
           onPress: async () => {
-            try {
-              await deleteAccount();
-              router.replace("/onboarding/language");
-            } catch (e: any) {
-              Alert.alert("Erreur", e.message || "Suppression échouée");
-            }
+            await AsyncStorage.setItem("@active_role", "customer");
+            router.replace("/(customer)/home");
           },
         },
       ],
@@ -397,6 +475,10 @@ export default function MerchantProfileScreen() {
   const rateDisplay = `1 pt = ${merchant?.points_rate ?? 1} DH`;
   const presetsDisplay =
     presets.slice(0, 3).join(", ") + (presets.length > 3 ? "..." : "");
+  const tierDisplay = `🥈 ${merchant?.silver_threshold ?? 1000} · 🥇 ${merchant?.gold_threshold ?? 5000}`;
+  const merchantInitials = (merchant?.business_name ??
+    user?.firstName ??
+    "M")[0].toUpperCase();
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -416,26 +498,23 @@ export default function MerchantProfileScreen() {
             },
           ]}
         >
-          <View
-            style={[
-              styles.avatarWrap,
-              { backgroundColor: merchantAccentColor + "20" },
-            ]}
-          >
-            <Text
-              style={[
-                styles.avatarText,
-                { color: merchantAccentColor, fontFamily: "Inter_700Bold" },
-              ]}
-            >
-              {(user?.firstName?.[0] ?? "").toUpperCase()}
-              {(user?.lastName?.[0] ?? "").toUpperCase()}
-            </Text>
-          </View>
+          <AvatarPicker
+            userId={user?.id ?? ""}
+            currentUrl={merchant?.avatar_url}
+            size={84}
+            initials={merchantInitials}
+            accentColor={merchantAccentColor}
+            folder="merchant"
+            onUploaded={handleLogoUploaded}
+          />
           <Text
             style={[
               styles.heroName,
-              { color: colors.foreground, fontFamily: "Inter_700Bold" },
+              {
+                color: colors.foreground,
+                fontFamily: "Inter_700Bold",
+                marginTop: 8,
+              },
             ]}
           >
             {user?.firstName} {user?.lastName}
@@ -456,27 +535,6 @@ export default function MerchantProfileScreen() {
           >
             {user?.email ?? user?.phone ?? ""}
           </Text>
-          {merchant?.qr_code && (
-            <View style={styles.qrWrap}>
-              <QRCode
-                value={merchant.qr_code}
-                size={120}
-                color="#1a1a2e"
-                backgroundColor="white"
-              />
-              <Text
-                style={[
-                  styles.qrCode,
-                  {
-                    color: colors.mutedForeground,
-                    fontFamily: "Inter_400Regular",
-                  },
-                ]}
-              >
-                {merchant.qr_code}
-              </Text>
-            </View>
-          )}
         </View>
 
         {/* ── MES INFORMATIONS ── */}
@@ -527,7 +585,22 @@ export default function MerchantProfileScreen() {
             isRTL={isRTL}
           />
           <Separator />
-          {/* ✅ totalCustomers depuis merchant_stats */}
+          {/* ✅ Niveaux de fidélité */}
+          <SettingsRow
+            icon="award"
+            iconColor="#FFD700"
+            label={
+              language === "ar"
+                ? "مستويات الولاء"
+                : language === "en"
+                  ? "Loyalty tiers"
+                  : "Niveaux de fidélité"
+            }
+            value={tierDisplay}
+            onPress={() => setShowTierModal(true)}
+            isRTL={isRTL}
+          />
+          <Separator />
           <SettingsRow
             icon="users"
             iconColor="#3498DB"
@@ -630,25 +703,30 @@ export default function MerchantProfileScreen() {
         {/* ── COMPTE ── */}
         <SettingsSection title={isRTL ? "الحساب" : "Compte"} isRTL={isRTL}>
           <SettingsRow
+            icon="user"
+            iconColor="#FF6B6B"
+            label={
+              language === "ar"
+                ? "التبديل إلى وضع العميل"
+                : language === "en"
+                  ? "Switch to customer mode"
+                  : "Passer en mode client"
+            }
+            onPress={handleSwitchToCustomer}
+            isRTL={isRTL}
+          />
+          <Separator />
+          <SettingsRow
             icon="log-out"
             iconColor="#E67E22"
             label={t("profile.logout")}
             onPress={handleLogout}
             isRTL={isRTL}
           />
-          <Separator />
-          <SettingsRow
-            icon="trash-2"
-            iconColor="#E74C3C"
-            label={isRTL ? "حذف الحساب" : "Supprimer mon compte"}
-            onPress={handleDeleteAccount}
-            destructive
-            isRTL={isRTL}
-          />
         </SettingsSection>
       </ScrollView>
 
-      {/* ── Modal Mes informations ── */}
+      {/* ── Modal infos ── */}
       <BottomModal
         visible={showInfoModal}
         onClose={() => setShowInfoModal(false)}
@@ -756,7 +834,7 @@ export default function MerchantProfileScreen() {
         </KeyboardAwareScrollView>
       </BottomModal>
 
-      {/* ── Modal Taux de points ── */}
+      {/* ── Modal taux de points ── */}
       <BottomModal
         visible={showRateModal}
         onClose={() => setShowRateModal(false)}
@@ -812,7 +890,7 @@ export default function MerchantProfileScreen() {
         </KeyboardAwareScrollView>
       </BottomModal>
 
-      {/* ─a�� Modal Presets rapides ── */}
+      {/* ── Modal points rapides ── */}
       <BottomModal
         visible={showPresetsModal}
         onClose={() => setShowPresetsModal(false)}
@@ -825,19 +903,6 @@ export default function MerchantProfileScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={{ padding: 20, gap: 16 }}>
-            <Text
-              allowFontScaling={false}
-              style={{
-                color: colors.mutedForeground,
-                fontFamily: "Inter_400Regular",
-                fontSize: fs(13),
-                textAlign,
-              }}
-            >
-              {isRTL
-                ? "أدخل قيم النقاط مفصولة بفواصل"
-                : "Entrez les valeurs séparées par des virgules (max 6)"}
-            </Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
               {presetsInput.split(",").map((p, i) => {
                 const n = parseInt(p.trim());
@@ -893,18 +958,6 @@ export default function MerchantProfileScreen() {
               ]}
               placeholderTextColor={colors.mutedForeground}
             />
-            <Text
-              allowFontScaling={false}
-              style={{
-                color: colors.mutedForeground,
-                fontFamily: "Inter_400Regular",
-                fontSize: fs(11),
-              }}
-            >
-              {isRTL
-                ? "مثال: 10,25,50,100,200,500"
-                : "Ex: 10,25,50,100,200,500"}
-            </Text>
             <Button
               title={t("common.save")}
               onPress={handleSavePresets}
@@ -915,7 +968,220 @@ export default function MerchantProfileScreen() {
         </KeyboardAwareScrollView>
       </BottomModal>
 
-      {/* ── Modal Langue ── */}
+      {/* ✅ Modal niveaux de fidélité */}
+      <BottomModal
+        visible={showTierModal}
+        onClose={() => setShowTierModal(false)}
+        title={
+          language === "ar"
+            ? "مستويات الولاء"
+            : language === "en"
+              ? "Loyalty tiers"
+              : "Niveaux de fidélité"
+        }
+        colors={colors}
+      >
+        <KeyboardAwareScrollView
+          keyboardShouldPersistTaps="handled"
+          bottomOffset={60}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={{ padding: 20, gap: 20 }}>
+            {/* Explication */}
+            <Text
+              style={{
+                color: colors.mutedForeground,
+                fontFamily: "Inter_400Regular",
+                fontSize: fs(13),
+                lineHeight: 20,
+                textAlign,
+              }}
+            >
+              {language === "ar"
+                ? "يُحسب المستوى على أساس النقاط المتراكمة مدى الحياة — لا ينخفض أبداً حتى بعد استخدام المكافآت."
+                : language === "en"
+                  ? "Tiers are based on lifetime cumulated points — they never decrease, even after redeeming rewards."
+                  : "Les niveaux sont basés sur les points cumulés à vie — ils ne baissent jamais, même après avoir utilisé des récompenses."}
+            </Text>
+
+            {/* Aperçu des tiers */}
+            <View style={[styles.tierPreview, { borderColor: colors.border }]}>
+              {[
+                {
+                  emoji: "🥉",
+                  label: "Bronze",
+                  color: "#CD7F32",
+                  desc: language === "en" ? "From 0 pts" : "Dès 0 pts",
+                  pts: "0",
+                },
+                {
+                  emoji: "🥈",
+                  label: "Silver",
+                  color: "#C0C0C0",
+                  desc:
+                    language === "en"
+                      ? `From ${silverThreshold} pts`
+                      : `Dès ${silverThreshold} pts`,
+                  pts: silverThreshold,
+                },
+                {
+                  emoji: "🥇",
+                  label: "Gold",
+                  color: "#FFD700",
+                  desc:
+                    language === "en"
+                      ? `From ${goldThreshold} pts`
+                      : `Dès ${goldThreshold} pts`,
+                  pts: goldThreshold,
+                },
+              ].map((tier, i) => (
+                <View
+                  key={i}
+                  style={[
+                    styles.tierItem,
+                    i < 2 && {
+                      borderBottomWidth: 1,
+                      borderBottomColor: colors.border,
+                    },
+                  ]}
+                >
+                  <Text style={{ fontSize: fs(24) }}>{tier.emoji}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{
+                        color: tier.color,
+                        fontFamily: "Inter_700Bold",
+                        fontSize: fs(15),
+                      }}
+                    >
+                      {tier.label}
+                    </Text>
+                    <Text
+                      style={{
+                        color: colors.mutedForeground,
+                        fontFamily: "Inter_400Regular",
+                        fontSize: fs(12),
+                      }}
+                    >
+                      {tier.desc}
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.tierBadge,
+                      {
+                        backgroundColor: tier.color + "20",
+                        borderColor: tier.color + "40",
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color: tier.color,
+                        fontFamily: "Inter_700Bold",
+                        fontSize: fs(12),
+                      }}
+                    >
+                      {tier.pts === "0" ? "0+" : `${tier.pts}+`}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+
+            {/* Seuil Silver */}
+            <View style={{ gap: sp(8) }}>
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+              >
+                <Text style={{ fontSize: fs(20) }}>🥈</Text>
+                <Text
+                  style={{
+                    color: colors.foreground,
+                    fontFamily: "Inter_600SemiBold",
+                    fontSize: fs(14),
+                  }}
+                >
+                  {language === "en" ? "Silver threshold" : "Seuil Silver"}
+                </Text>
+              </View>
+              <Input
+                placeholder="1000"
+                value={silverThreshold}
+                onChangeText={setSilverThreshold}
+                keyboardType="number-pad"
+                leftIcon="zap"
+                label={language === "en" ? "Points required" : "Points requis"}
+              />
+            </View>
+
+            {/* Seuil Gold */}
+            <View style={{ gap: sp(8) }}>
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+              >
+                <Text style={{ fontSize: fs(20) }}>🥇</Text>
+                <Text
+                  style={{
+                    color: colors.foreground,
+                    fontFamily: "Inter_600SemiBold",
+                    fontSize: fs(14),
+                  }}
+                >
+                  {language === "en" ? "Gold threshold" : "Seuil Gold"}
+                </Text>
+              </View>
+              <Input
+                placeholder="5000"
+                value={goldThreshold}
+                onChangeText={setGoldThreshold}
+                keyboardType="number-pad"
+                leftIcon="award"
+                label={language === "en" ? "Points required" : "Points requis"}
+              />
+            </View>
+
+            {/* Validation */}
+            {parseInt(goldThreshold) <= parseInt(silverThreshold) &&
+              silverThreshold &&
+              goldThreshold && (
+                <View
+                  style={[
+                    styles.errorBox,
+                    { backgroundColor: "#E74C3C10", borderColor: "#E74C3C30" },
+                  ]}
+                >
+                  <Feather
+                    name="alert-circle"
+                    size={iconSize(14)}
+                    color="#E74C3C"
+                  />
+                  <Text
+                    style={{
+                      color: "#E74C3C",
+                      fontFamily: "Inter_400Regular",
+                      fontSize: fs(12),
+                      flex: 1,
+                    }}
+                  >
+                    {language === "en"
+                      ? "Gold must be greater than Silver"
+                      : "Le seuil Gold doit être supérieur au seuil Silver"}
+                  </Text>
+                </View>
+              )}
+
+            <Button
+              title={t("common.save")}
+              onPress={handleSaveTiers}
+              loading={savingTiers}
+              style={{ backgroundColor: merchantAccentColor }}
+            />
+          </View>
+        </KeyboardAwareScrollView>
+      </BottomModal>
+
+      {/* ── Modal langue ── */}
       <BottomModal
         visible={showLangModal}
         onClose={() => setShowLangModal(false)}
@@ -941,7 +1207,9 @@ export default function MerchantProfileScreen() {
                 },
               ]}
             >
-              <Text allowFontScaling={false} style={{ fontSize: fs(24) }}>{l.flag}</Text>
+              <Text allowFontScaling={false} style={{ fontSize: fs(24) }}>
+                {l.flag}
+              </Text>
               <Text
                 allowFontScaling={false}
                 style={{
@@ -957,14 +1225,18 @@ export default function MerchantProfileScreen() {
                 {l.label}
               </Text>
               {language === l.code && (
-                <Feather name="check" size={iconSize(20)} color={merchantAccentColor} />
+                <Feather
+                  name="check"
+                  size={iconSize(20)}
+                  color={merchantAccentColor}
+                />
               )}
             </TouchableOpacity>
           ))}
         </View>
       </BottomModal>
 
-      {/* ── Modal Couleur ── */}
+      {/* ── Modal couleur ── */}
       <BottomModal
         visible={showColorModal}
         onClose={() => setShowColorModal(false)}
@@ -1007,7 +1279,6 @@ export default function MerchantProfileScreen() {
         </View>
       </BottomModal>
 
-      {/* ── Toast ── */}
       {toastVisible && (
         <View
           style={[
@@ -1034,20 +1305,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     gap: 4,
   },
-  avatarWrap: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8,
-  },
-  avatarText: { fontSize: fs(28) },
   heroName: { fontSize: fs(20) },
   heroBiz: { fontSize: fs(14) },
   heroEmail: { fontSize: fs(13), marginTop: 2 },
-  qrWrap: { alignItems: "center", marginTop: 16, gap: 8 },
-  qrCode: { fontSize: fs(11), letterSpacing: 1 },
   sectionWrap: { marginTop: 24, paddingHorizontal: 16 },
   sectionHeader: {
     fontSize: fs(12),
@@ -1070,9 +1330,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  // APRÈS
-  rowLabel: { fontSize: fs(15), color: "#000" },
-  rowValue: { fontSize: fs(13), color: "#666" },
+  rowLabel: { fontSize: fs(15) },
+  rowValue: { fontSize: fs(13) },
   separator: { height: 1, marginLeft: 64 },
   catChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
   modalOverlay: {
@@ -1136,6 +1395,28 @@ const styles = StyleSheet.create({
     borderRadius: 32,
     alignItems: "center",
     justifyContent: "center",
+  },
+  // ✅ Tier styles
+  tierPreview: { borderWidth: 1, borderRadius: 16, overflow: "hidden" },
+  tierItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 14,
+  },
+  tierBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 99,
+    borderWidth: 1,
+  },
+  errorBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
   },
   toast: {
     position: "absolute",

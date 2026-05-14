@@ -45,6 +45,7 @@ function RootLayoutNav() {
         <Stack.Screen name="auth/forgot" />
         <Stack.Screen name="auth/role" />
         <Stack.Screen name="auth/merchant-setup" />
+        <Stack.Screen name="auth/phone-otp" />
         <Stack.Screen name="(customer)" />
         <Stack.Screen name="(merchant)" />
       </Stack>

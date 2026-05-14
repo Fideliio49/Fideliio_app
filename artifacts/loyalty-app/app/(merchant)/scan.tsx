@@ -8,11 +8,12 @@ import {
   TouchableOpacity,
   StatusBar,
   Animated,
+  Linking,
 } from "react-native";
 import { fs, iconSize } from "@/utils/responsive";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { CameraView, useCameraPermissions } from "expo-camera";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
@@ -27,6 +28,8 @@ import { useTranslation } from "react-i18next";
 type ScanStep = "scanning" | "quickPoints" | "amount" | "success";
 const QUICK_AMOUNTS = [5, 10, 20, 50, 100, 200];
 const MULTIPLIERS = [1, 2, 5, 10, 20, 50];
+
+const FREE_PLAN_LIMIT = 10; // ✅ Limite clients plan gratuit
 
 function formatAmount(raw: string): string {
   if (!raw || raw === "0") return "0";
@@ -61,7 +64,6 @@ async function sendPointsNotification(
   } catch {}
 }
 
-// ✅ Récupère le max des récompenses du commerçant
 async function getMaxRewardPoints(merchantId: string): Promise<number> {
   const { data } = await supabase
     .from("rewards")
@@ -72,10 +74,34 @@ async function getMaxRewardPoints(merchantId: string): Promise<number> {
   return Math.max(...data.map((r: any) => r.points_required));
 }
 
+// ✅ Vérifie si le commerçant a atteint sa limite de clients selon son plan
+async function checkPlanLimit(merchantId: string): Promise<{
+  allowed: boolean;
+  count: number;
+  limit: number;
+  plan: string;
+}> {
+  // ✅ Appel Supabase — limite contrôlable depuis le dashboard
+  const { data } = await supabase.rpc("get_merchant_plan_limit", {
+    p_merchant_id: merchantId,
+  });
+
+  const result = data?.[0];
+  if (!result) return { allowed: true, count: 0, limit: 10, plan: "trial" };
+
+  return {
+    allowed: result.is_within_limit,
+    count: result.current_count,
+    limit: result.customer_limit,
+    plan: result.plan,
+  };
+}
+
 export default function MerchantScanScreen() {
   const colors = useColors();
-  const { user, colorTheme, merchantAccentColor, isRTL } = useApp();
+  const { user, colorTheme, merchantAccentColor, isRTL, language } = useApp();
   const { t } = useTranslation();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
 
@@ -100,6 +126,10 @@ export default function MerchantScanScreen() {
     10, 25, 50, 100, 200, 500,
   ]);
 
+  // ✅ État plan limit
+  const [planLimitCount, setPlanLimitCount] = useState(0);
+  const [planLimitReached, setPlanLimitReached] = useState(false);
+
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const isDark = colorTheme === "dark";
@@ -110,8 +140,6 @@ export default function MerchantScanScreen() {
   const effectiveAmount = amountNum * multiplier;
   const pointsRate = merchant?.points_rate ?? 1;
   const points = Math.floor(effectiveAmount / pointsRate);
-
-  // ✅ Points restants avant le cap
   const isAtMax = customerPoints >= maxRewardPoints;
   const remainingToMax = Math.max(0, maxRewardPoints - customerPoints);
 
@@ -149,6 +177,10 @@ export default function MerchantScanScreen() {
           .filter((n: number) => !isNaN(n) && n > 0);
         if (pts.length > 0) setQuickPoints(pts);
       }
+      // ✅ Vérifier la limite plan au chargement
+      const limitCheck = await checkPlanLimit(data.id);
+      setPlanLimitCount(limitCheck.count);
+      setPlanLimitReached(!limitCheck.allowed);
     }
   }
 
@@ -181,6 +213,40 @@ export default function MerchantScanScreen() {
     }
   }, [step]);
 
+  // ✅ Afficher l'alerte limite plan avec option upgrade
+  function showPlanLimitAlert(count: number, isNewCustomer: boolean) {
+    if (!isNewCustomer) return; // Clients existants peuvent toujours gagner des points
+
+    Alert.alert(
+      language === "ar"
+        ? "🔒 تم الوصول إلى الحد"
+        : language === "en"
+          ? "🔒 Limit reached"
+          : "🔒 Limite atteinte",
+      language === "ar"
+        ? `لديك ${count} عميل في خطتك المجانية (الحد: ${FREE_PLAN_LIMIT}).\nقم بالترقية للاستمرار في إضافة عملاء جدد.`
+        : language === "en"
+          ? `You have ${count} customers on your free plan (limit: ${FREE_PLAN_LIMIT}).\nUpgrade to continue adding new customers.`
+          : `Vous avez ${count} clients sur votre plan gratuit (limite : ${FREE_PLAN_LIMIT}).\nPassez à un plan payant pour continuer.`,
+      [
+        {
+          text: language === "en" ? "Cancel" : "Annuler",
+          style: "cancel",
+          onPress: () => setActivelyScanning(true),
+        },
+        {
+          text:
+            language === "ar"
+              ? "ترقية"
+              : language === "en"
+                ? "Upgrade"
+                : "Passer au plan payant",
+          onPress: () => router.replace("/auth/subscription-expired"),
+        },
+      ],
+    );
+  }
+
   async function handleBarcodeScan({ data }: { data: string }) {
     if (!activelyScanning) return;
     setActivelyScanning(false);
@@ -190,6 +256,7 @@ export default function MerchantScanScreen() {
         await handleRedemptionToken(trimmed);
         return;
       }
+
       const { data: customerData, error } = await supabase
         .from("customers")
         .select("*")
@@ -201,6 +268,7 @@ export default function MerchantScanScreen() {
         ]);
         return;
       }
+
       const { data: pointsData } = await supabase
         .from("customer_merchant_points")
         .select("total_points")
@@ -208,29 +276,33 @@ export default function MerchantScanScreen() {
         .eq("merchant_id", merchant?.id)
         .maybeSingle();
       const pts = Math.max(0, pointsData?.total_points ?? 0);
-      setCustomerPoints(pts);
+      const isExistingCustomer = pts > 0 || pointsData !== null;
 
-      // ✅ Charger le max des récompenses
+      // ✅ Vérifier limite plan UNIQUEMENT pour les nouveaux clients
+      if (!isExistingCustomer && merchant) {
+        const limitCheck = await checkPlanLimit(merchant.id);
+        setPlanLimitCount(limitCheck.count);
+        if (!limitCheck.allowed) {
+          setPlanLimitReached(true);
+          showPlanLimitAlert(limitCheck.count, true);
+          return;
+        }
+      }
+
       const max = await getMaxRewardPoints(merchant?.id);
       setMaxRewardPoints(max);
-
+      setCustomerPoints(pts);
       setScannedCustomer(customerData);
-
-      // ✅ Si client au max → alerte immédiate mais on continue vers quickPoints
-      // (le commerçant voit le message d'alerte sur l'écran quickPoints)
       setStep("quickPoints");
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-      // ✅ Alerte immédiate si client au max
       if (pts >= max) {
         setTimeout(() => {
           Alert.alert(
             isRTL ? "⚠️ الحد الأقصى مبلغ" : "⚠️ Plafond atteint",
             isRTL
-              ? `${customerData.first_name} ${customerData.last_name} وصل إلى الحد الأقصى (${max} نقطة).
-يجب عليه استخدام مكافأة أولاً قبل إضافة نقاط جديدة.`
-              : `${customerData.first_name} ${customerData.last_name} a atteint le plafond de ${max} pts.
-Il doit utiliser une récompense avant d'en gagner de nouveaux.`,
+              ? `${customerData.first_name} ${customerData.last_name} وصل إلى الحد الأقصى (${max} نقطة).`
+              : `${customerData.first_name} ${customerData.last_name} a atteint le plafond de ${max} pts.`,
             [{ text: "OK" }],
           );
         }, 300);
@@ -250,7 +322,6 @@ Il doit utiliser une récompense avant d'en gagner de nouveaux.`,
         ]);
         return;
       }
-
       const { data: tokenData, error: tokenError } = await supabase
         .from("redemption_tokens")
         .select("*")
@@ -301,7 +372,6 @@ Il doit utiliser une récompense avant d'en gagner de nouveaux.`,
       }
 
       const customerName = `${customer.first_name} ${customer.last_name}`;
-      // ✅ Utiliser la vue cappée pour affichage/vérification
       const { data: currentPoints } = await supabase
         .from("customer_merchant_points")
         .select("total_points")
@@ -313,13 +383,12 @@ Il doit utiliser une récompense avant d'en gagner de nouveaux.`,
       if (solde < reward.points_required) {
         Alert.alert(
           "Points insuffisants",
-          `${customerName} a ${solde} pts chez vous.\nCette récompense nécessite ${reward.points_required} pts.`,
+          `${customerName} a ${solde} pts.\nCette récompense nécessite ${reward.points_required} pts.`,
           [{ text: "OK", onPress: () => setActivelyScanning(true) }],
         );
         return;
       }
 
-      // ✅ Récupérer le SUM BRUT des transactions pour la déduction réelle
       const { data: rawTxData } = await supabase
         .from("transactions")
         .select("points_earned")
@@ -329,17 +398,13 @@ Il doit utiliser une récompense avant d'en gagner de nouveaux.`,
         (acc: number, tx: any) => acc + (tx.points_earned ?? 0),
         0,
       );
-      const pointsToDeduct = -Math.max(0, rawSum); // Négatif pour remettre à zéro
-
+      const pointsToDeduct = -Math.max(0, rawSum);
       const { nanoid } = await import("nanoid/non-secure");
 
-      // ✅ Marquer token utilisé
       await supabase
         .from("redemption_tokens")
         .update({ used_at: new Date().toISOString() })
         .eq("token", token);
-
-      // ✅ Insérer la rédemption
       await supabase.from("redemptions").insert({
         id: nanoid(),
         customer_id: customer.id,
@@ -347,11 +412,9 @@ Il doit utiliser une récompense avant d'en gagner de nouveaux.`,
         merchant_id: merchant.id,
         reward_name: reward.name,
         merchant_name: merchant.business_name,
-        points_spent: solde, // ✅ Tous les points, pas juste points_required
+        points_spent: solde,
         redeemed_at: new Date().toISOString(),
       });
-
-      // ✅ Transaction négative = TOUS les points (remise à zéro totale)
       await supabase.from("transactions").insert({
         id: nanoid(),
         customer_id: customer.id,
@@ -360,31 +423,9 @@ Il doit utiliser une récompense avant d'en gagner de nouveaux.`,
         customer_name: customerName,
         amount: 0,
         multiplier: 1,
-        points_earned: pointsToDeduct, // ✅ Déduire le SUM BRUT pour revenir à zéro
+        points_earned: pointsToDeduct,
         created_at: new Date().toISOString(),
       });
-
-      // Notification push
-      try {
-        const { data: cust } = await supabase
-          .from("customers")
-          .select("push_token")
-          .eq("id", customer.id)
-          .maybeSingle();
-        if (cust?.push_token?.startsWith("ExponentPushToken")) {
-          await fetch("https://exp.host/--/api/v2/push/send", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              to: cust.push_token,
-              title: "🎁 Récompense validée !",
-              body: `Votre récompense "${reward.name}" a été appliquée chez ${merchant.business_name}.`,
-              sound: "default",
-              priority: "high",
-            }),
-          });
-        }
-      } catch {}
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setSuccessData({
@@ -414,6 +455,7 @@ Il doit utiliser une récompense avant d'en gagner de nouveaux.`,
       Alert.alert("", "Aucun client trouvé pour ce code.");
       return;
     }
+
     const { data: pointsData } = await supabase
       .from("customer_merchant_points")
       .select("total_points")
@@ -421,41 +463,35 @@ Il doit utiliser une récompense avant d'en gagner de nouveaux.`,
       .eq("merchant_id", merchant?.id)
       .maybeSingle();
     const pts = Math.max(0, pointsData?.total_points ?? 0);
-    setCustomerPoints(pts);
+    const isExistingCustomer = pts > 0 || pointsData !== null;
+
+    if (!isExistingCustomer && merchant) {
+      const limitCheck = await checkPlanLimit(merchant.id);
+      if (!limitCheck.allowed) {
+        showPlanLimitAlert(limitCheck.count, true);
+        return;
+      }
+    }
+
     const max = await getMaxRewardPoints(merchant?.id);
     setMaxRewardPoints(max);
+    setCustomerPoints(pts);
     setScannedCustomer(customerData);
     setStep("quickPoints");
-    // ✅ Alerte si client au max (web)
-    if (pts >= max) {
-      setTimeout(() => {
-        Alert.alert(
-          "⚠️ Plafond atteint",
-          `${customerData.first_name} ${customerData.last_name} a atteint le plafond de ${max} pts.
-Il doit utiliser une récompense avant d'en gagner de nouveaux.`,
-          [{ text: "OK" }],
-        );
-      }, 300);
-    }
   }
 
   async function handleQuickPointsValidate(presetPoints: number) {
     if (!scannedCustomer || !merchant) return;
-
-    // ✅ Bloquer si client au max
     if (isAtMax) {
       Alert.alert(
         isRTL ? "وصل إلى الحد الأقصى" : "Plafond atteint",
         isRTL
-          ? `هذا العميل وصل إلى الحد الأقصى (${maxRewardPoints} نقطة). يجب أن يستخدم مكافأة أولاً.`
-          : `Ce client a atteint le plafond de ${maxRewardPoints} pts. Il doit d'abord utiliser une récompense.`,
+          ? `يجب استخدام مكافأة أولاً.`
+          : `Ce client doit d'abord utiliser une récompense.`,
       );
       return;
     }
-
-    // ✅ Limiter les points ajoutés au restant disponible
     const effectivePoints = Math.min(presetPoints, remainingToMax);
-
     setLoadingPreset(presetPoints);
     try {
       const { nanoid } = await import("nanoid/non-secure");
@@ -492,20 +528,16 @@ Il doit utiliser une récompense avant d'en gagner de nouveaux.`,
 
   async function handleValidate() {
     if (!scannedCustomer || !merchant || amountNum === 0) return;
-
-    // ✅ Bloquer si client au max
     if (isAtMax) {
       Alert.alert(
         isRTL ? "وصل إلى الحد الأقصى" : "Plafond atteint",
         isRTL
-          ? `هذا العميل وصل إلى الحد الأقصى (${maxRewardPoints} نقطة).`
-          : `Ce client a atteint le plafond de ${maxRewardPoints} pts. Il doit d'abord utiliser une récompense.`,
+          ? `يجب استخدام مكافأة أولاً.`
+          : `Ce client doit d'abord utiliser une récompense.`,
       );
       return;
     }
-
     const effectivePoints = Math.min(points, remainingToMax);
-
     setLoading(true);
     try {
       const { nanoid } = await import("nanoid/non-secure");
@@ -573,6 +605,12 @@ Il doit utiliser une récompense avant d'en gagner de nouveaux.`,
     setWebCode("");
     setActivelyScanning(true);
     setLoadingPreset(null);
+    // Refresh plan limit count
+    if (merchant)
+      checkPlanLimit(merchant.id).then((r) => {
+        setPlanLimitCount(r.count);
+        setPlanLimitReached(!r.allowed);
+      });
   }
 
   // ── SUCCESS ──
@@ -598,19 +636,6 @@ Il doit utiliser une récompense avant d'en gagner de nouveaux.`,
               ? `🎁 Récompense appliquée !\n${successData.name} repart à 0 pts`
               : `✓ +${successData.points.toLocaleString("fr-FR")} pts\n${successData.name}`}
           </Text>
-          {isRedeemed && (
-            <Text
-              style={{
-                color: "rgba(255,255,255,0.8)",
-                fontFamily: "Inter_400Regular",
-                fontSize: fs(14),
-                textAlign: "center",
-                marginTop: 8,
-              }}
-            >
-              -{successData.points} pts déduits
-            </Text>
-          )}
         </View>
       </View>
     );
@@ -628,7 +653,11 @@ Il doit utiliser une récompense avant d'en gagner de nouveaux.`,
           ]}
         >
           <TouchableOpacity onPress={handleReset} style={styles.backBtn}>
-            <Feather name="arrow-left" size={iconSize(22)} color={colors.foreground} />
+            <Feather
+              name="arrow-left"
+              size={iconSize(22)}
+              color={colors.foreground}
+            />
           </TouchableOpacity>
           <Text
             style={[
@@ -639,8 +668,6 @@ Il doit utiliser une récompense avant d'en gagner de nouveaux.`,
             {isRTL ? "تأكيد النقاط" : "Créditer des points"}
           </Text>
         </View>
-
-        {/* ✅ Banner client avec points et cap */}
         <View
           style={[
             styles.customerBanner,
@@ -692,7 +719,6 @@ Il doit utiliser une récompense avant d'en gagner de nouveaux.`,
             >
               {customerPoints} / {maxRewardPoints} pts
             </Text>
-            {/* ✅ Barre de progression vers le plafond */}
             <View style={[styles.capTrack, { backgroundColor: colors.border }]}>
               <View
                 style={[
@@ -715,7 +741,7 @@ Il doit utiliser une récompense avant d'en gagner de nouveaux.`,
                 }}
               >
                 {isRTL
-                  ? "⚠️ وصل إلى الحد الأقصى — يجب استخدام مكافأة أولاً"
+                  ? "⚠️ وصل إلى الحد الأقصى"
                   : "⚠️ Plafond atteint — doit utiliser une récompense"}
               </Text>
             )}
@@ -926,7 +952,11 @@ Il doit utiliser une récompense avant d'en gagner de nouveaux.`,
             onPress={() => setStep("quickPoints")}
             style={styles.backBtn}
           >
-            <Feather name="arrow-left" size={iconSize(22)} color={colors.foreground} />
+            <Feather
+              name="arrow-left"
+              size={iconSize(22)}
+              color={colors.foreground}
+            />
           </TouchableOpacity>
           <Text
             style={[
@@ -1201,6 +1231,33 @@ Il doit utiliser une récompense avant d'en gagner de nouveaux.`,
   return (
     <View style={[styles.container, { backgroundColor: "#000" }]}>
       <StatusBar translucent backgroundColor="transparent" />
+
+      {/* ✅ Bannière limite plan en haut du scanner */}
+      {planLimitReached && (
+        <View style={[styles.limitBanner, { paddingTop: topPad + 8 }]}>
+          <Feather name="lock" size={iconSize(14)} color="#fff" />
+          <Text
+            style={[
+              styles.limitBannerText,
+              { fontFamily: "Inter_600SemiBold" },
+            ]}
+          >
+            {language === "en"
+              ? `Free plan: ${planLimitCount}/${FREE_PLAN_LIMIT} customers`
+              : `Plan gratuit: ${planLimitCount}/${FREE_PLAN_LIMIT} clients`}
+          </Text>
+          <TouchableOpacity
+            onPress={() => router.replace("/auth/subscription-expired")}
+          >
+            <Text
+              style={[styles.limitBannerLink, { fontFamily: "Inter_700Bold" }]}
+            >
+              {language === "en" ? "Upgrade →" : "Passer au payant →"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {Platform.OS === "web" ? (
         <View
           style={[
@@ -1262,7 +1319,11 @@ Il doit utiliser une récompense avant d'en gagner de nouveaux.`,
             { paddingTop: topPad + 20, backgroundColor: colors.background },
           ]}
         >
-          <Feather name="camera-off" size={iconSize(48)} color={colors.mutedForeground} />
+          <Feather
+            name="camera-off"
+            size={iconSize(48)}
+            color={colors.mutedForeground}
+          />
           <Text
             style={[
               styles.webHint,
@@ -1336,6 +1397,27 @@ const styles = StyleSheet.create({
   webFallback: { flex: 1 },
   webIconWrap: { alignItems: "center", gap: 12 },
   webHint: { fontSize: fs(14), textAlign: "center", lineHeight: 21 },
+  // ✅ Bannière limite plan
+  limitBanner: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    backgroundColor: "#E74C3C",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+  },
+  limitBannerText: { color: "#fff", fontSize: fs(12), flex: 1 },
+  limitBannerLink: {
+    color: "#fff",
+    fontSize: fs(12),
+    textDecorationLine: "underline",
+  },
   customerBanner: {
     paddingHorizontal: 20,
     paddingVertical: 14,

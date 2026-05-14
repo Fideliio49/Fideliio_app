@@ -1,6 +1,12 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
-  View, Text, StyleSheet, TouchableOpacity, Alert, Platform, Keyboard,
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Alert,
+  Platform,
+  Keyboard,
 } from "react-native";
 import { fs } from "@/utils/responsive";
 import { useRouter } from "expo-router";
@@ -14,28 +20,152 @@ import { Input } from "@/components/ui/Input";
 import { FideliioLogo } from "@/components/FideliioLogo";
 import { supabase } from "@/lib/supabase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as WebBrowser from "expo-web-browser";
+
+// ✅ Nécessaire pour fermer le browser après le OAuth sur Android
+WebBrowser.maybeCompleteAuthSession();
+
+const GOOGLE_CLIENT_ID =
+  "199143368759-2nekgkh7bhnagv7int2qb5e7d4di1n5u.apps.googleusercontent.com";
 
 export default function LoginScreen() {
   const colors = useColors();
   const { t } = useTranslation();
   const router = useRouter();
-  const { completeOnboarding } = useApp();
+  const { completeOnboarding, language } = useApp();
 
   const [mode, setMode] = useState<"login" | "register">("login");
-  const [inputMode, setInputMode] = useState<"email" | "phone">("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [phone, setPhone] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [showConfirmPw, setShowConfirmPw] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // ✅ Écouter UNIQUEMENT après un clic Google — pas au montage
+  const googleAuthPending = React.useRef(false);
+
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // ✅ Ne naviguer que si c'est nous qui avons déclenché le Google OAuth
+      if (event === "SIGNED_IN" && session && googleAuthPending.current) {
+        googleAuthPending.current = false;
+        setGoogleLoading(false);
+        await navigateAfterAuth();
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Pas besoin de redirectUri custom — on utilise directement Supabase callback
+
+  // ─── Navigation après auth réussie ───────────────────────
+
+  function isValidEmail(email: string): boolean {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  }
+
+  async function navigateAfterAuth() {
+    await completeOnboarding();
+    const storedRole = await AsyncStorage.getItem("@active_role");
+    if (storedRole) {
+      router.replace(
+        storedRole === "merchant" ? "/(merchant)/home" : "/(customer)/home",
+      );
+    } else {
+      router.replace("/auth/role");
+    }
+  }
+
+  // ─── Google OAuth ─────────────────────────────────────────
+
+  async function handleGoogleLogin() {
+    try {
+      setGoogleLoading(true);
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: "loyalty-app://auth/callback",
+          skipBrowserRedirect: true,
+        },
+      });
+
+      if (error || !data?.url)
+        throw error ?? new Error("URL Google introuvable");
+
+      // ✅ Marquer qu'on attend un retour Google
+      googleAuthPending.current = true;
+
+      // Ouvrir le browser — la navigation se fait via onAuthStateChange
+      const result = await WebBrowser.openAuthSessionAsync(
+        data.url,
+        "loyalty-app://auth/callback",
+      );
+
+      // Si l'utilisateur ferme le browser sans se connecter
+      if (result.type !== "success") {
+        googleAuthPending.current = false;
+        setGoogleLoading(false);
+        return;
+      }
+
+      // ✅ Extraire les tokens de l'URL de retour et créer la session manuellement
+      const returnUrl = result.url ?? "";
+      const hashParams = new URLSearchParams(
+        returnUrl.includes("#")
+          ? returnUrl.split("#")[1]
+          : (returnUrl.split("?")[1] ?? ""),
+      );
+      const accessToken = hashParams.get("access_token");
+      const refreshToken = hashParams.get("refresh_token");
+
+      if (accessToken && refreshToken) {
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+        if (sessionError) throw sessionError;
+        // onAuthStateChange va capter SIGNED_IN et naviguer
+      } else {
+        // Fallback — vérifier la session directement
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData?.session) {
+          setGoogleLoading(false);
+          await navigateAfterAuth();
+        } else {
+          setGoogleLoading(false);
+          Alert.alert("Connexion incomplète", "Réessayez.");
+        }
+      }
+    } catch (e: any) {
+      googleAuthPending.current = false;
+      setGoogleLoading(false);
+      Alert.alert("Erreur Google", e?.message || "Une erreur est survenue.");
+    }
+  }
+
+  // ─── Email / Password ─────────────────────────────────────
 
   async function handleSubmit() {
     const errs: Record<string, string> = {};
-    if (!email.trim()) errs.email = t("auth.atLeastOne");
+    if (!email.trim()) {
+      errs.email = t("auth.atLeastOne");
+    } else if (!isValidEmail(email)) {
+      errs.email =
+        language === "ar"
+          ? "البريد الإلكتروني غير صحيح"
+          : language === "en"
+            ? "Invalid email address"
+            : "Adresse email invalide";
+    }
     if (!password.trim()) errs.password = "Required";
     if (mode === "register") {
       if (!firstName.trim()) errs.firstName = "Required";
@@ -43,29 +173,21 @@ export default function LoginScreen() {
       if (password.length < 6) errs.password = "Au moins 6 caractères";
       if (password !== confirmPw) errs.confirmPw = t("auth.passwordsMatch");
     }
-    if (Object.keys(errs).length) { setErrors(errs); return; }
+    if (Object.keys(errs).length) {
+      setErrors(errs);
+      return;
+    }
 
     setLoading(true);
     try {
       if (mode === "login") {
         const { error } = await supabase.auth.signInWithPassword({
-          email: email.trim(), password,
+          email: email.trim(),
+          password,
         });
         if (error) throw error;
-
-        // ✅ Vérifier si l'utilisateur a déjà un rôle actif
-        const storedRole = await AsyncStorage.getItem("@active_role");
-        await completeOnboarding();
-
-        if (storedRole) {
-          // Connexion existante → aller directement
-          router.replace(storedRole === "merchant" ? "/(merchant)/home" : "/(customer)/home");
-        } else {
-          // Première connexion → choisir le rôle
-          router.replace("/auth/role");
-        }
+        await navigateAfterAuth();
       } else {
-        // Inscription
         const { error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
@@ -75,22 +197,28 @@ export default function LoginScreen() {
               last_name: lastName.trim(),
               firstName: firstName.trim(),
               lastName: lastName.trim(),
+              phone: phone.trim() || null,
             },
           },
         });
         if (error) {
-          if (error.message.includes("already registered") || error.message.includes("User already registered")) {
+          if (
+            error.message.includes("already registered") ||
+            error.message.includes("User already registered")
+          ) {
             Alert.alert(
               "Email déjà utilisé",
               "Ce compte existe déjà. Connectez-vous.",
-              [{ text: "Se connecter", onPress: () => setMode("login") }, { text: "Annuler", style: "cancel" }]
+              [
+                { text: "Se connecter", onPress: () => setMode("login") },
+                { text: "Annuler", style: "cancel" },
+              ],
             );
             return;
           }
           throw error;
         }
         await completeOnboarding();
-        // Nouvel utilisateur → choisir son rôle
         router.replace("/auth/role");
       }
     } catch (e: any) {
@@ -107,10 +235,15 @@ export default function LoginScreen() {
     }
   }
 
+  // ─── Render ───────────────────────────────────────────────
+
   return (
-    <View style={[styles.container, { backgroundColor: "#fff" }]}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAwareScrollView
-        contentContainerStyle={[styles.scroll, { paddingTop: Platform.OS === "web" ? 80 : 60 }]}
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingTop: Platform.OS === "web" ? 80 : 60 },
+        ]}
         keyboardShouldPersistTaps="handled"
         onScrollBeginDrag={Keyboard.dismiss}
         bottomOffset={20}
@@ -119,18 +252,62 @@ export default function LoginScreen() {
         {/* Header */}
         <View style={styles.header}>
           <FideliioLogo size={60} />
-          <Text style={[styles.appName, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>Fideliio</Text>
-          <Text style={[styles.tagline, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
+          <Text
+            style={[
+              styles.appName,
+              { color: colors.foreground, fontFamily: "Inter_700Bold" },
+            ]}
+          >
+            Fideliio
+          </Text>
+          <Text
+            style={[
+              styles.tagline,
+              { color: colors.mutedForeground, fontFamily: "Inter_400Regular" },
+            ]}
+          >
             {t("splash.tagline")}
           </Text>
         </View>
 
         {/* Toggle login / register */}
-        <View style={[styles.toggleRow, { backgroundColor: colors.muted, borderRadius: 12 }]}>
+        <View
+          style={[
+            styles.toggleRow,
+            { backgroundColor: colors.muted, borderRadius: 12 },
+          ]}
+        >
           {(["login", "register"] as const).map((m) => (
-            <TouchableOpacity key={m} onPress={() => { setMode(m); setErrors({}); }}
-              style={[styles.toggleBtn, { backgroundColor: mode === m ? "#fff" : "transparent", borderRadius: 10, shadowColor: mode === m ? "#000" : "transparent", shadowOpacity: 0.08, shadowRadius: 4, elevation: mode === m ? 2 : 0 }]}>
-              <Text style={[styles.toggleText, { color: mode === m ? colors.foreground : colors.mutedForeground, fontFamily: mode === m ? "Inter_700Bold" : "Inter_400Regular" }]}>
+            <TouchableOpacity
+              key={m}
+              onPress={() => {
+                setMode(m);
+                setErrors({});
+                setPhone("");
+              }}
+              style={[
+                styles.toggleBtn,
+                {
+                  backgroundColor: mode === m ? colors.card : "transparent",
+                  borderRadius: 10,
+                  shadowColor: mode === m ? "#000" : "transparent",
+                  shadowOpacity: 0.08,
+                  shadowRadius: 4,
+                  elevation: mode === m ? 2 : 0,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.toggleText,
+                  {
+                    color:
+                      mode === m ? colors.foreground : colors.mutedForeground,
+                    fontFamily:
+                      mode === m ? "Inter_700Bold" : "Inter_400Regular",
+                  },
+                ]}
+              >
                 {m === "login" ? t("auth.login") : t("auth.register")}
               </Text>
             </TouchableOpacity>
@@ -140,28 +317,117 @@ export default function LoginScreen() {
         {/* Form */}
         <View style={styles.form}>
           {mode === "register" && (
-            <View style={styles.row2}>
-              <Input label={t("auth.firstName")} placeholder={t("auth.firstName")} value={firstName} onChangeText={setFirstName} leftIcon="user" error={errors.firstName} containerStyle={{ flex: 1 }} />
-              <Input label={t("auth.lastName")} placeholder={t("auth.lastName")} value={lastName} onChangeText={setLastName} leftIcon="user" error={errors.lastName} containerStyle={{ flex: 1 }} />
-            </View>
+            <>
+              <View style={styles.row2}>
+                <Input
+                  label={t("auth.firstName")}
+                  placeholder={t("auth.firstName")}
+                  value={firstName}
+                  onChangeText={setFirstName}
+                  leftIcon="user"
+                  error={errors.firstName}
+                  containerStyle={{ flex: 1 }}
+                />
+                <Input
+                  label={t("auth.lastName")}
+                  placeholder={t("auth.lastName")}
+                  value={lastName}
+                  onChangeText={setLastName}
+                  leftIcon="user"
+                  error={errors.lastName}
+                  containerStyle={{ flex: 1 }}
+                />
+              </View>
+              <Input
+                label={
+                  language === "ar"
+                    ? "رقم الهاتف (اختياري)"
+                    : language === "en"
+                      ? "Phone number (optional)"
+                      : "Téléphone (optionnel)"
+                }
+                placeholder={
+                  language === "ar" ? "+212 6XX XXX XXX" : "+212 6 XX XX XX XX"
+                }
+                value={phone}
+                onChangeText={setPhone}
+                keyboardType="phone-pad"
+                leftIcon="phone"
+              />
+            </>
           )}
-          <Input label={t("auth.email")} placeholder="email@exemple.com" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" leftIcon="mail" error={errors.email} />
-          <Input label={t("auth.password")} placeholder="••••••••" value={password} onChangeText={setPassword} secureTextEntry={!showPw} leftIcon="lock" rightIcon={showPw ? "eye-off" : "eye"} onRightIconPress={() => setShowPw(v => !v)} error={errors.password} />
+          <Input
+            label={t("auth.email")}
+            placeholder="email@exemple.com"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            leftIcon="mail"
+            error={errors.email}
+          />
+          <Input
+            label={t("auth.password")}
+            placeholder="••••••••"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry={!showPw}
+            leftIcon="lock"
+            rightIcon={showPw ? "eye-off" : "eye"}
+            onRightIconPress={() => setShowPw((v) => !v)}
+            error={errors.password}
+          />
           {mode === "register" && (
-            <Input label={t("auth.confirmPassword")} placeholder="••••••••" value={confirmPw} onChangeText={setConfirmPw} secureTextEntry={!showConfirmPw} leftIcon="lock" rightIcon={showConfirmPw ? "eye-off" : "eye"} onRightIconPress={() => setShowConfirmPw(v => !v)} error={errors.confirmPw} />
+            <Input
+              label={t("auth.confirmPassword")}
+              placeholder="••••••••"
+              value={confirmPw}
+              onChangeText={setConfirmPw}
+              secureTextEntry={!showConfirmPw}
+              leftIcon="lock"
+              rightIcon={showConfirmPw ? "eye-off" : "eye"}
+              onRightIconPress={() => setShowConfirmPw((v) => !v)}
+              error={errors.confirmPw}
+            />
           )}
           {mode === "login" && (
-            <TouchableOpacity onPress={() => router.push("/auth/forgot")} style={styles.forgotBtn}>
-              <Text style={[styles.forgotText, { color: colors.primary, fontFamily: "Inter_400Regular" }]}>{t("auth.forgotPassword")}</Text>
+            <TouchableOpacity
+              onPress={() => router.push("/auth/forgot")}
+              style={styles.forgotBtn}
+            >
+              <Text
+                style={[
+                  styles.forgotText,
+                  { color: colors.primary, fontFamily: "Inter_400Regular" },
+                ]}
+              >
+                {t("auth.forgotPassword")}
+              </Text>
             </TouchableOpacity>
           )}
         </View>
 
-        {/* CTA */}
-        <TouchableOpacity onPress={handleSubmit} activeOpacity={0.88} disabled={loading}>
-          <LinearGradient colors={["#C85A17", "#E67E22"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.ctaBtn, { borderRadius: colors.radius }]}>
+        {/* CTA Email */}
+        <TouchableOpacity
+          onPress={handleSubmit}
+          activeOpacity={0.88}
+          disabled={loading || googleLoading}
+        >
+          <LinearGradient
+            colors={["#C85A17", "#E67E22"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={[
+              styles.ctaBtn,
+              { borderRadius: colors.radius, opacity: loading ? 0.7 : 1 },
+            ]}
+          >
             <Text style={[styles.ctaText, { fontFamily: "Inter_700Bold" }]}>
-              {loading ? t("common.loading") : mode === "login" ? t("auth.login") : t("auth.register")}
+              {loading
+                ? t("common.loading")
+                : mode === "login"
+                  ? t("auth.login")
+                  : t("auth.register")}
             </Text>
           </LinearGradient>
         </TouchableOpacity>
@@ -169,14 +435,71 @@ export default function LoginScreen() {
         {/* Divider */}
         <View style={styles.dividerRow}>
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <Text style={[styles.dividerText, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>{t("common.or")}</Text>
+          <Text
+            style={[
+              styles.dividerText,
+              { color: colors.mutedForeground, fontFamily: "Inter_400Regular" },
+            ]}
+          >
+            {t("common.or")}
+          </Text>
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
         </View>
 
-        {/* Google */}
-        <TouchableOpacity style={[styles.googleBtn, { borderColor: colors.border, borderRadius: colors.radius }]}>
-          <Text style={styles.googleIcon}>G</Text>
-          <Text style={[styles.googleText, { color: colors.foreground, fontFamily: "Inter_500Medium" }]}>{t("auth.google")}</Text>
+        {/* ✅ Bouton Google fonctionnel */}
+        <TouchableOpacity
+          onPress={handleGoogleLogin}
+          disabled={googleLoading || loading}
+          activeOpacity={0.85}
+          style={[
+            styles.googleBtn,
+            {
+              borderColor: colors.border,
+              borderRadius: colors.radius,
+              opacity: googleLoading ? 0.7 : 1,
+            },
+          ]}
+        >
+          <View style={styles.googleIconWrap}>
+            <Text style={styles.googleIconG}>G</Text>
+          </View>
+          <Text
+            style={[
+              styles.googleText,
+              { color: colors.foreground, fontFamily: "Inter_500Medium" },
+            ]}
+          >
+            {googleLoading ? t("common.loading") : t("auth.google")}
+          </Text>
+        </TouchableOpacity>
+
+        {/* ✅ Bouton Téléphone */}
+        <TouchableOpacity
+          onPress={() => router.push("/auth/phone-otp")}
+          disabled={loading || googleLoading}
+          activeOpacity={0.85}
+          style={[
+            styles.googleBtn,
+            {
+              borderColor: colors.border,
+              borderRadius: colors.radius,
+              marginTop: 12,
+            },
+          ]}
+        >
+          <Feather name="smartphone" size={18} color={colors.foreground} />
+          <Text
+            style={[
+              styles.googleText,
+              { color: colors.foreground, fontFamily: "Inter_500Medium" },
+            ]}
+          >
+            {language === "ar"
+              ? "المتابعة برقم الهاتف"
+              : language === "en"
+                ? "Continue with phone"
+                : "Continuer avec le téléphone"}
+          </Text>
         </TouchableOpacity>
       </KeyboardAwareScrollView>
     </View>
@@ -198,10 +521,34 @@ const styles = StyleSheet.create({
   forgotText: { fontSize: fs(13) },
   ctaBtn: { paddingVertical: 16, alignItems: "center", marginTop: 8 },
   ctaText: { color: "#fff", fontSize: fs(16) },
-  dividerRow: { flexDirection: "row", alignItems: "center", marginVertical: 20, gap: 12 },
+  dividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 20,
+    gap: 12,
+  },
   divider: { flex: 1, height: 1 },
   dividerText: { fontSize: fs(14) },
-  googleBtn: { borderWidth: 1.5, paddingVertical: 14, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 10 },
-  googleIcon: { fontSize: fs(18), fontWeight: "bold", color: "#4285F4" },
+  googleBtn: {
+    borderWidth: 1.5,
+    paddingVertical: 14,
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 10,
+    marginBottom: 24,
+  },
+  googleIconWrap: {
+    width: 22,
+    height: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  googleIconG: {
+    fontSize: fs(18),
+    fontWeight: "bold",
+    color: "#4285F4",
+    lineHeight: 22,
+  },
   googleText: { fontSize: fs(15) },
 });

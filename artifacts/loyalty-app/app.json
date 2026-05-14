@@ -41,7 +41,8 @@
           "cameraPermission": "Fideliio a besoin de la caméra pour scanner les QR codes clients."
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true,

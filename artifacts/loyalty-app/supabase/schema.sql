@@ -180,7 +180,7 @@ BEGIN
   IF points >= 5000 THEN RETURN 'gold';
   ELSIF points >= 1000 THEN RETURN 'silver';
   ELSE RETURN 'bronze';
-  END IF;
+  END IF;qu
 END;
 $$ LANGUAGE plpgsql;
 
