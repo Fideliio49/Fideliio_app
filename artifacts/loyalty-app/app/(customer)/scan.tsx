@@ -149,6 +149,26 @@ export default function CustomerQrCodeScreen() {
           .in("merchant_id", merchantIds)
           .eq("is_active", true);
 
+        const rewardMap = new Map<string, number>();
+        (rewards ?? []).forEach((r: any) => {
+          const existing = rewardMap.get(r.merchant_id);
+          if (existing === undefined || r.points_required < existing) {
+            rewardMap.set(r.merchant_id, r.points_required);
+          }
+        });
+
+        const progress: MerchantProgress[] = merchantPoints.map((m: any) => {
+          const maxPts = rewardMap.get(m.merchant_id) ?? 100;
+          const current = Math.max(0, m.total_points ?? 0);
+          return {
+            merchant_id: m.merchant_id,
+            business_name: m.business_name ?? "",
+            current_points: current,
+            max_points: maxPts,
+            progress: Math.min(1, current / maxPts),
+          };
+        });
+
         progress.sort((a, b) => b.progress - a.progress);
         setMerchantProgress(progress);
       }

@@ -19,6 +19,9 @@ config.cacheStores = [
 ];
 
 // ✅ Watchman — désactiver sur Replit (pas supporté)
-config.watchFolders = [path.resolve(__dirname)];
+config.watchFolders = [
+  path.resolve(__dirname),
+  path.resolve(__dirname, "../.."),
+];
 
 module.exports = config;
