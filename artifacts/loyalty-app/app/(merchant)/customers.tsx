@@ -17,7 +17,7 @@ import { fs, iconSize, sp } from "@/utils/responsive";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
-import { LinearGradient } from "expo-linear-gradient";
+
 import { useTranslation } from "react-i18next";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
@@ -750,7 +750,7 @@ export default function MerchantCustomersScreen() {
                             { backgroundColor: colors.border },
                           ]}
                         >
-                          <LinearGradient
+                          <View
                             colors={[merchantAccentColor, "#F9A602"]}
                             start={{ x: isRTL ? 1 : 0, y: 0 }}
                             end={{ x: isRTL ? 0 : 1, y: 0 }}
@@ -1346,7 +1346,7 @@ export default function MerchantCustomersScreen() {
                     activeOpacity={0.88}
                     style={{ marginTop: sp(16) }}
                   >
-                    <LinearGradient
+                    <View
                       colors={[merchantAccentColor, merchantAccentColor + "CC"]}
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 0 }}
@@ -1367,7 +1367,7 @@ export default function MerchantCustomersScreen() {
                             ? `Compose message → ${filteredTargets.length}`
                             : `Composer le message → ${filteredTargets.length} clients`}
                       </Text>
-                    </LinearGradient>
+                    </View>
                   </TouchableOpacity>
                 </>
               )}
@@ -1691,7 +1691,7 @@ export default function MerchantCustomersScreen() {
                       activeOpacity={0.88}
                       style={{ marginTop: sp(12) }}
                     >
-                      <LinearGradient
+                      <View
                         colors={[
                           merchantAccentColor,
                           merchantAccentColor + "CC",
@@ -1725,7 +1725,7 @@ export default function MerchantCustomersScreen() {
                               ? `Send to ${filteredTargets.length} customers`
                               : `Envoyer à ${filteredTargets.length} clients`}
                         </Text>
-                      </LinearGradient>
+                      </View>
                     </TouchableOpacity>
                   </ScrollView>
                 </>
@@ -2042,7 +2042,7 @@ export default function MerchantCustomersScreen() {
                   activeOpacity={0.88}
                   style={{ marginTop: sp(12) }}
                 >
-                  <LinearGradient
+                  <View
                     colors={[merchantAccentColor, merchantAccentColor + "CC"]}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
@@ -2073,7 +2073,7 @@ export default function MerchantCustomersScreen() {
                           ? "Send offer"
                           : "Envoyer l'offre"}
                     </Text>
-                  </LinearGradient>
+                  </View>
                 </TouchableOpacity>
               </ScrollView>
             </View>

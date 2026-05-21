@@ -14,14 +14,19 @@
       "backgroundColor": "#7C3AED"
     },
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "bundleIdentifier": "com.fideliio.fideliio"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#1a1a6e"
       },
-      "softwareKeyboardLayoutMode": "pan"
+      "softwareKeyboardLayoutMode": "pan",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/images/icon.png"
@@ -42,8 +47,21 @@
         }
       ],
       "expo-secure-store",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#C85A17",
+          "sounds": []
+        }
+      ]
     ],
+    "extra": {
+      "eas": {
+        "projectId": "290d577e-fd92-47c3-8e48-191322a904a7"
+      }
+    },
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true

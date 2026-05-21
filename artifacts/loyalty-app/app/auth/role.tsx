@@ -7,11 +7,9 @@ import {
   Platform,
   StatusBar,
   Animated,
-  Dimensions,
 } from "react-native";
 import { fs, iconSize } from "@/utils/responsive";
 import { useRouter } from "expo-router";
-import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
@@ -20,13 +18,11 @@ import { useApp } from "@/context/AppContext";
 import { supabase } from "@/lib/supabase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const { width } = Dimensions.get("window");
-
 export default function RoleScreen() {
   const colors = useColors();
   const { t } = useTranslation();
   const router = useRouter();
-  const { user } = useApp();
+  const { user, onMerchantLogin } = useApp();
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
@@ -38,28 +34,12 @@ export default function RoleScreen() {
   useEffect(() => {
     Animated.sequence([
       Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 400,
-          useNativeDriver: true,
-        }),
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 400,
-          useNativeDriver: true,
-        }),
+        Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
+        Animated.timing(slideAnim, { toValue: 0, duration: 400, useNativeDriver: true }),
       ]),
       Animated.stagger(120, [
-        Animated.timing(card1Anim, {
-          toValue: 0,
-          duration: 350,
-          useNativeDriver: true,
-        }),
-        Animated.timing(card2Anim, {
-          toValue: 0,
-          duration: 350,
-          useNativeDriver: true,
-        }),
+        Animated.timing(card1Anim, { toValue: 0, duration: 350, useNativeDriver: true }),
+        Animated.timing(card2Anim, { toValue: 0, duration: 350, useNativeDriver: true }),
       ]),
     ]).start();
   }, []);
@@ -71,212 +51,114 @@ export default function RoleScreen() {
     if (role === "merchant" && user?.id) {
       const { data } = await supabase
         .from("merchants")
-        .select("id, business_name, subscription_started")
+        .select("id, subscription_started")
         .eq("user_id", user.id)
         .maybeSingle();
 
-      // ✅ Seul indicateur fiable — subscription_started
       if (!data?.subscription_started) {
         router.replace("/auth/merchant-setup");
         return;
       }
 
-      // Commerce déjà configuré → vérifier subscription
-      const { data: sub } = await supabase.rpc("get_merchant_subscription", {
+      const { data: subData } = await supabase.rpc("check_merchant_access", {
         p_merchant_id: data.id,
       });
-      const subscription = sub?.[0];
+      const subscription = subData?.[0];
 
-      if (!subscription) {
-        await supabase.rpc("start_merchant_trial", { p_merchant_id: data.id });
-        router.replace("/(merchant)/home");
-        return;
-      }
-
-      if (!subscription.is_active) {
+      if (!subscription?.is_active) {
         router.replace("/auth/subscription-expired");
         return;
       }
 
+      await onMerchantLogin(user.id);
       router.replace("/(merchant)/home");
     } else {
       router.replace("/(customer)/home");
     }
   }
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar barStyle="dark-content" />
-
       <View style={[styles.bgCircle1, { backgroundColor: "#FF6B6B10" }]} />
       <View style={[styles.bgCircle2, { backgroundColor: "#2C3E8C08" }]} />
-
       <View style={[styles.inner, { paddingTop: topPad + 20 }]}>
-        {/* Header */}
-        <Animated.View
-          style={[
-            styles.header,
-            { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
-          ]}
-        >
+
+        {/* ── Header ── */}
+        <Animated.View style={[styles.header, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
           <View style={[styles.logoWrap, { backgroundColor: "#FF6B6B15" }]}>
             <Text style={styles.logoText}>F</Text>
           </View>
-          <Text
-            style={[
-              styles.title,
-              { color: colors.foreground, fontFamily: "Inter_700Bold" },
-            ]}
-          >
+          <Text style={[styles.title, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
             {t("role.choose")}
           </Text>
-          <Text
-            style={[
-              styles.subtitle,
-              { color: colors.mutedForeground, fontFamily: "Inter_400Regular" },
-            ]}
-          >
+          <Text style={[styles.subtitle, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
             {t("role.chooseSub")}
           </Text>
         </Animated.View>
 
-        {/* Cards */}
+        {/* ── Cards ── */}
         <View style={styles.cards}>
-          {/* Customer Card */}
-          <Animated.View
-            style={{
-              transform: [{ translateY: card1Anim }],
-              opacity: fadeAnim,
-            }}
-          >
-            <TouchableOpacity
-              onPress={() => handleRole("customer")}
-              activeOpacity={0.92}
-              style={styles.cardOuter}
-            >
-              <LinearGradient
-                colors={["#FF6B6B", "#FF8E53"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.card}
-              >
+
+          {/* Card Client */}
+          <Animated.View style={{ transform: [{ translateY: card1Anim }], opacity: fadeAnim }}>
+            <TouchableOpacity onPress={() => handleRole("customer")} activeOpacity={0.92} style={styles.cardOuter}>
+              <View style={[styles.card, { backgroundColor: "#FF6B6B" }]}>
                 <View style={styles.iconCircle}>
-                  {/* ✅ iconSize() — résout les carrés Android */}
                   <Feather name="user" size={iconSize(28)} color="#FF6B6B" />
                 </View>
                 <View style={styles.cardContent}>
-                  <Text
-                    style={[styles.cardTitle, { fontFamily: "Inter_700Bold" }]}
-                  >
+                  <Text style={[styles.cardTitle, { fontFamily: "Inter_700Bold" }]}>
                     {t("role.customer")}
                   </Text>
-                  <Text
-                    style={[styles.cardSub, { fontFamily: "Inter_400Regular" }]}
-                  >
+                  <Text style={[styles.cardSub, { fontFamily: "Inter_400Regular" }]}>
                     {t("role.customerSub")}
                   </Text>
                 </View>
                 <View style={styles.cardChevron}>
-                  <Feather
-                    name="chevron-right"
-                    size={iconSize(22)}
-                    color="rgba(255,255,255,0.9)"
-                  />
+                  <Feather name="chevron-right" size={iconSize(22)} color="rgba(255,255,255,0.9)" />
                 </View>
-                <View
-                  style={[
-                    styles.dot1,
-                    { backgroundColor: "rgba(255,255,255,0.15)" },
-                  ]}
-                />
-                <View
-                  style={[
-                    styles.dot2,
-                    { backgroundColor: "rgba(255,255,255,0.08)" },
-                  ]}
-                />
-              </LinearGradient>
+                <View style={[styles.dot1, { backgroundColor: "rgba(255,255,255,0.15)" }]} />
+                <View style={[styles.dot2, { backgroundColor: "rgba(255,255,255,0.08)" }]} />
+              </View>
             </TouchableOpacity>
           </Animated.View>
 
-          {/* Merchant Card */}
-          <Animated.View
-            style={{
-              transform: [{ translateY: card2Anim }],
-              opacity: fadeAnim,
-            }}
-          >
-            <TouchableOpacity
-              onPress={() => handleRole("merchant")}
-              activeOpacity={0.92}
-              style={styles.cardOuter}
-            >
-              <LinearGradient
-                colors={["#1a237e", "#0288d1"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.card}
-              >
+          {/* Card Commerçant */}
+          <Animated.View style={{ transform: [{ translateY: card2Anim }], opacity: fadeAnim }}>
+            <TouchableOpacity onPress={() => handleRole("merchant")} activeOpacity={0.92} style={styles.cardOuter}>
+              <View style={[styles.card, { backgroundColor: "#1a237e" }]}>
                 <View style={[styles.iconCircle, { backgroundColor: "#fff" }]}>
-                  {/* ✅ iconSize() — résout les carrés Android */}
-                  <Feather
-                    name="briefcase"
-                    size={iconSize(28)}
-                    color="#1a237e"
-                  />
+                  <Feather name="briefcase" size={iconSize(28)} color="#1a237e" />
                 </View>
                 <View style={styles.cardContent}>
-                  <Text
-                    style={[styles.cardTitle, { fontFamily: "Inter_700Bold" }]}
-                  >
+                  <Text style={[styles.cardTitle, { fontFamily: "Inter_700Bold" }]}>
                     {t("role.merchant")}
                   </Text>
-                  <Text
-                    style={[styles.cardSub, { fontFamily: "Inter_400Regular" }]}
-                  >
+                  <Text style={[styles.cardSub, { fontFamily: "Inter_400Regular" }]}>
                     {t("role.merchantSub")}
                   </Text>
                 </View>
                 <View style={styles.cardChevron}>
-                  <Feather
-                    name="chevron-right"
-                    size={iconSize(22)}
-                    color="rgba(255,255,255,0.9)"
-                  />
+                  <Feather name="chevron-right" size={iconSize(22)} color="rgba(255,255,255,0.9)" />
                 </View>
-                <View
-                  style={[
-                    styles.dot1,
-                    { backgroundColor: "rgba(255,255,255,0.12)" },
-                  ]}
-                />
-                <View
-                  style={[
-                    styles.dot2,
-                    { backgroundColor: "rgba(255,255,255,0.06)" },
-                  ]}
-                />
-              </LinearGradient>
+                <View style={[styles.dot1, { backgroundColor: "rgba(255,255,255,0.12)" }]} />
+                <View style={[styles.dot2, { backgroundColor: "rgba(255,255,255,0.06)" }]} />
+              </View>
             </TouchableOpacity>
           </Animated.View>
+
         </View>
 
-        {/* Footer */}
+        {/* ── Footer ── */}
         <Animated.View style={[styles.footer, { opacity: fadeAnim }]}>
-          <View
-            style={[styles.footerDot, { backgroundColor: colors.border }]}
-          />
-          <Text
-            style={[
-              styles.footerText,
-              { color: colors.mutedForeground, fontFamily: "Inter_400Regular" },
-            ]}
-          >
+          <View style={[styles.footerDot, { backgroundColor: colors.border }]} />
+          <Text style={[styles.footerText, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
             Vous pouvez utiliser les deux espaces avec le même compte
           </Text>
-          <View
-            style={[styles.footerDot, { backgroundColor: colors.border }]}
-          />
+          <View style={[styles.footerDot, { backgroundColor: colors.border }]} />
         </Animated.View>
+
       </View>
     </View>
   );
@@ -285,107 +167,24 @@ export default function RoleScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, overflow: "hidden" },
   inner: { flex: 1, paddingHorizontal: 24 },
-  bgCircle1: {
-    position: "absolute",
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    top: -80,
-    right: -80,
-  },
-  bgCircle2: {
-    position: "absolute",
-    width: 250,
-    height: 250,
-    borderRadius: 125,
-    bottom: 100,
-    left: -60,
-  },
+  bgCircle1: { position: "absolute", width: 300, height: 300, borderRadius: 150, top: -80, right: -80 },
+  bgCircle2: { position: "absolute", width: 250, height: 250, borderRadius: 125, bottom: 100, left: -60 },
   header: { alignItems: "center", gap: 10, marginBottom: 36 },
-  logoWrap: {
-    width: 70,
-    height: 70,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 4,
-  },
+  logoWrap: { width: 70, height: 70, borderRadius: 20, alignItems: "center", justifyContent: "center", marginBottom: 4 },
   logoText: { fontSize: fs(36), fontWeight: "bold", color: "#FF6B6B" },
   title: { fontSize: fs(28), textAlign: "center" },
   subtitle: { fontSize: fs(15), textAlign: "center", lineHeight: 22 },
   cards: { gap: 16 },
-  cardOuter: {
-    borderRadius: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    elevation: 10,
-  },
-  card: {
-    borderRadius: 24,
-    padding: 24,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 16,
-    minHeight: 110,
-    overflow: "hidden",
-  },
-  iconCircle: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: "#fff",
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
+  cardOuter: { borderRadius: 24, shadowColor: "#000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.18, shadowRadius: 16, elevation: 10 },
+  card: { borderRadius: 24, padding: 24, flexDirection: "row", alignItems: "center", gap: 16, minHeight: 110, overflow: "hidden" },
+  iconCircle: { width: 58, height: 58, borderRadius: 29, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
   cardContent: { flex: 1, gap: 4 },
   cardTitle: { color: "#fff", fontSize: fs(19) },
-  cardSub: {
-    color: "rgba(255,255,255,0.82)",
-    fontSize: fs(13),
-    lineHeight: 19,
-  },
-  cardChevron: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  dot1: {
-    position: "absolute",
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    top: -20,
-    right: 60,
-  },
-  dot2: {
-    position: "absolute",
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    bottom: -60,
-    right: -30,
-  },
-  footer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginTop: 32,
-    paddingHorizontal: 8,
-  },
+  cardSub: { color: "rgba(255,255,255,0.82)", fontSize: fs(13), lineHeight: 19 },
+  cardChevron: { width: 36, height: 36, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
+  dot1: { position: "absolute", width: 100, height: 100, borderRadius: 50, top: -20, right: 60 },
+  dot2: { position: "absolute", width: 160, height: 160, borderRadius: 80, bottom: -60, right: -30 },
+  footer: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 32, paddingHorizontal: 8 },
   footerDot: { width: 4, height: 4, borderRadius: 2 },
-  footerText: {
-    flex: 1,
-    fontSize: fs(12),
-    textAlign: "center",
-    lineHeight: 18,
-  },
+  footerText: { flex: 1, fontSize: fs(12), textAlign: "center", lineHeight: 18 },
 });

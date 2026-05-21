@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { fs, sp, iconSize } from "@/utils/responsive";
 import { useRouter } from "expo-router";
-import { LinearGradient } from "expo-linear-gradient";
+
 import { Feather } from "@expo/vector-icons";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useColors } from "@/hooks/useColors";
@@ -469,7 +469,7 @@ export default function PhoneOTPScreen() {
           activeOpacity={0.88}
           style={{ marginTop: sp(24) }}
         >
-          <LinearGradient
+          <View
             colors={["#C85A17", "#E67E22"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
@@ -489,7 +489,7 @@ export default function PhoneOTPScreen() {
                   ? labelSend
                   : labelVerify}
             </Text>
-          </LinearGradient>
+          </View>
         </TouchableOpacity>
       </KeyboardAwareScrollView>
     </View>

@@ -14,7 +14,6 @@ import {
   Image,
 } from "react-native";
 import { fs, iconSize } from "@/utils/responsive";
-import QRCode from "react-native-qrcode-svg";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useTranslation } from "react-i18next";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -184,6 +183,7 @@ export default function CustomerProfileScreen() {
     setColorTheme,
     accentColor,
     setAccentColor,
+    onMerchantLogin, // ← ajouter ici
   } = useApp();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -262,6 +262,21 @@ export default function CustomerProfileScreen() {
           : "✓ Photo supprimée",
     );
   }
+  async function handleShareQr() {
+    if (!customer?.qr_code) return;
+    try {
+      await Share.share({
+        message:
+          language === "ar"
+            ? `رمز QR الخاص بي : ${customer.qr_code}`
+            : language === "en"
+              ? `My QR code: ${customer.qr_code}`
+              : `Mon code QR : ${customer.qr_code}`,
+      });
+    } catch (e: any) {
+      Alert.alert("Erreur", e?.message || "Impossible de partager.");
+    }
+  }
 
   async function handleSaveInfo() {
     setSaving(true);
@@ -333,56 +348,43 @@ export default function CustomerProfileScreen() {
       ],
     );
   }
+  // customer/profile.tsx — handleSwitchToMerchant
   async function handleSwitchToMerchant() {
     if (!user?.id) return;
     try {
       const { data: merchant } = await supabase
         .from("merchants")
-        .select("id, business_name, subscription_started")
+        .select("id, subscription_started")
         .eq("user_id", user.id)
         .maybeSingle();
 
       if (!merchant) return;
 
-      // ✅ Seul indicateur fiable — subscription_started
       if (!merchant.subscription_started) {
         await AsyncStorage.setItem("@active_role", "merchant");
         router.replace("/auth/merchant-setup");
         return;
       }
 
-      // Commerce configuré → vérifier subscription
-      const { data: sub } = await supabase.rpc("get_merchant_subscription", {
+      // ✅ check_merchant_access — même RPC que profile.tsx commerçant
+      const { data: subData } = await supabase.rpc("check_merchant_access", {
         p_merchant_id: merchant.id,
       });
-      const subscription = sub?.[0];
+      const subscription = subData?.[0];
 
-      if (!subscription) {
-        await supabase.rpc("start_merchant_trial", {
-          p_merchant_id: merchant.id,
-        });
-        await AsyncStorage.setItem("@active_role", "merchant");
-        router.replace("/(merchant)/home");
-        return;
-      }
-
-      if (!subscription.is_active) {
+      if (!subscription || !subscription.is_active) {
         await AsyncStorage.setItem("@active_role", "merchant");
         router.replace("/auth/subscription-expired");
         return;
       }
 
+      // ✅ onMerchantLogin pour enregistrer la session device
       await AsyncStorage.setItem("@active_role", "merchant");
+      await onMerchantLogin(user.id);
       router.replace("/(merchant)/home");
     } catch (e: any) {
       Alert.alert("Erreur", e?.message || "Une erreur s'est produite.");
     }
-  }
-  async function handleShareQr() {
-    if (!customer?.qr_code) return;
-    try {
-      await Share.share({ message: `Mon code Fideliio : ${customer.qr_code}` });
-    } catch {}
   }
 
   const tierColor = TIER_COLORS[customer?.tier ?? "bronze"];

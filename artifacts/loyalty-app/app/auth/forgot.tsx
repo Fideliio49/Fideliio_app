@@ -13,7 +13,7 @@ import { fs, sp, iconSize } from "@/utils/responsive";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { Feather } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
+
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
@@ -366,7 +366,7 @@ export default function ForgotScreen() {
               activeOpacity={0.88}
               disabled={loading || !email.trim()}
             >
-              <LinearGradient
+              <View
                 colors={gradientColors}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
@@ -389,7 +389,7 @@ export default function ForgotScreen() {
                         ? "Send code"
                         : "Envoyer le code"}
                 </Text>
-              </LinearGradient>
+              </View>
             </TouchableOpacity>
           </>
         )}
@@ -471,7 +471,7 @@ export default function ForgotScreen() {
               disabled={loading || otp.join("").length < 6}
               style={{ width: "100%", marginTop: sp(8) }}
             >
-              <LinearGradient
+              <View
                 colors={gradientColors}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
@@ -494,7 +494,7 @@ export default function ForgotScreen() {
                         ? "Verify"
                         : "Vérifier"}
                 </Text>
-              </LinearGradient>
+              </View>
             </TouchableOpacity>
           </View>
         )}
@@ -540,7 +540,7 @@ export default function ForgotScreen() {
               activeOpacity={0.88}
               disabled={loading || !newPassword || !confirmPassword}
             >
-              <LinearGradient
+              <View
                 colors={gradientColors}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
@@ -563,7 +563,7 @@ export default function ForgotScreen() {
                         ? "Update password"
                         : "Mettre à jour"}
                 </Text>
-              </LinearGradient>
+              </View>
             </TouchableOpacity>
           </>
         )}
@@ -575,7 +575,7 @@ export default function ForgotScreen() {
               onPress={() => router.replace("/auth/login")}
               activeOpacity={0.88}
             >
-              <LinearGradient
+              <View
                 colors={gradientColors}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
@@ -590,7 +590,7 @@ export default function ForgotScreen() {
                       ? "Sign in"
                       : "Se connecter"}
                 </Text>
-              </LinearGradient>
+              </View>
             </TouchableOpacity>
           </View>
         )}

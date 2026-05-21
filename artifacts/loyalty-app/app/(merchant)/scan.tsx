@@ -24,6 +24,7 @@ import { Card } from "@/components/ui/Card";
 import * as Haptics from "expo-haptics";
 import { supabase } from "@/lib/supabase";
 import { useTranslation } from "react-i18next";
+import { AppState } from "react-native";
 
 type ScanStep = "scanning" | "quickPoints" | "amount" | "success";
 const QUICK_AMOUNTS = [5, 10, 20, 50, 100, 200];
@@ -75,24 +76,24 @@ async function getMaxRewardPoints(merchantId: string): Promise<number> {
 }
 
 // ✅ Vérifie si le commerçant a atteint sa limite de clients selon son plan
+// Remplacer la fonction checkPlanLimit par celle-ci
 async function checkPlanLimit(merchantId: string): Promise<{
   allowed: boolean;
   count: number;
   limit: number;
   plan: string;
 }> {
-  // ✅ Appel Supabase — limite contrôlable depuis le dashboard
-  const { data } = await supabase.rpc("get_merchant_plan_limit", {
+  const { data } = await supabase.rpc("check_merchant_access", {
     p_merchant_id: merchantId,
   });
 
   const result = data?.[0];
-  if (!result) return { allowed: true, count: 0, limit: 10, plan: "trial" };
+  if (!result) return { allowed: true, count: 0, limit: 10, plan: "none" };
 
   return {
-    allowed: result.is_within_limit,
-    count: result.current_count,
-    limit: result.customer_limit,
+    allowed: result.can_scan, // ← can_scan au lieu de is_within_limit
+    count: result.current_customers, // ← current_customers
+    limit: result.customer_limit ?? 10, // ← customer_limit
     plan: result.plan,
   };
 }
@@ -158,7 +159,10 @@ export default function MerchantScanScreen() {
   );
 
   useEffect(() => {
-    loadMerchant();
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") loadMerchant();
+    });
+    return () => sub.remove();
   }, [user?.id]);
 
   async function loadMerchant() {
@@ -208,7 +212,7 @@ export default function MerchantScanScreen() {
         friction: 8,
         useNativeDriver: true,
       }).start();
-      const timer = setTimeout(handleReset, 2500);
+      const timer = setTimeout(handleReset, 100);
       return () => clearTimeout(timer);
     }
   }, [step]);
@@ -241,7 +245,7 @@ export default function MerchantScanScreen() {
               : language === "en"
                 ? "Upgrade"
                 : "Passer au plan payant",
-          onPress: () => router.replace("/auth/subscription-expired"),
+          onPress: () => router.push("/auth/subscription-expired"),
         },
       ],
     );
@@ -1247,7 +1251,7 @@ export default function MerchantScanScreen() {
               : `Plan gratuit: ${planLimitCount}/${FREE_PLAN_LIMIT} clients`}
           </Text>
           <TouchableOpacity
-            onPress={() => router.replace("/auth/subscription-expired")}
+            onPress={() => router.push("/auth/subscription-expired")}
           >
             <Text
               style={[styles.limitBannerLink, { fontFamily: "Inter_700Bold" }]}

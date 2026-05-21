@@ -12,7 +12,7 @@ import { fs, iconSize } from "@/utils/responsive";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { Feather } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
+
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
@@ -263,7 +263,7 @@ export default function RegisterScreen() {
             disabled={loading}
             style={{ marginTop: 8 }}
           >
-            <LinearGradient
+            <View
               colors={gradientColors}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
@@ -272,7 +272,7 @@ export default function RegisterScreen() {
               <Text style={[styles.ctaText, { fontFamily: "Inter_700Bold" }]}>
                 {loading ? t("common.loading") : "Vérifier"}
               </Text>
-            </LinearGradient>
+            </View>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={async () => {
@@ -490,7 +490,7 @@ export default function RegisterScreen() {
           disabled={loading}
           style={{ marginTop: 8 }}
         >
-          <LinearGradient
+          <View
             colors={gradientColors}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
@@ -503,7 +503,7 @@ export default function RegisterScreen() {
                   ? "Envoyer le code"
                   : "Créer un compte"}
             </Text>
-          </LinearGradient>
+          </View>
         </TouchableOpacity>
         <View style={styles.dividerRow}>
           <View style={[styles.divider, { backgroundColor: "#E5E7EB" }]} />

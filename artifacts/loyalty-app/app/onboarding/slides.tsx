@@ -13,7 +13,7 @@ import {
 import { fs } from "@/utils/responsive";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
-import { LinearGradient } from "expo-linear-gradient";
+
 import { FideliioLogo } from "@/components/FideliioLogo";
 import { useColors } from "@/hooks/useColors";
 
@@ -96,7 +96,7 @@ export default function OnboardingSlides() {
   function renderSlide({ item }: ListRenderItemInfo<(typeof SLIDES)[0]>) {
     return (
       <View style={[styles.slide, { width: SCREEN_WIDTH }]}>
-        <LinearGradient
+        <View
           colors={[colors.deepBlue, "#2a2a8e"]}
           style={styles.slideTop}
         >
@@ -109,7 +109,7 @@ export default function OnboardingSlides() {
           >
             {t(item.subtitle as any)}
           </Text>
-        </LinearGradient>
+        </View>
         <View style={styles.slideCard}>
           {item.mainImage && (
             <Image
@@ -128,7 +128,7 @@ export default function OnboardingSlides() {
                   resizeMode="cover"
                 />
               ) : (
-                <LinearGradient
+                <View
                   key={i}
                   colors={
                     i === 0
@@ -141,7 +141,7 @@ export default function OnboardingSlides() {
                 >
                   <Text style={styles.illustIcon}>{g.icons}</Text>
                   <Text style={styles.illustLabel}>{g.label}</Text>
-                </LinearGradient>
+                </View>
               ),
             )}
           </View>
@@ -225,7 +225,7 @@ export default function OnboardingSlides() {
             activeOpacity={0.85}
             style={{ flex: 1 }}
           >
-            <LinearGradient
+            <View
               colors={[colors.green, "#00A87A"]}
               style={styles.nextBtnFull}
               start={{ x: 0, y: 0 }}
@@ -234,11 +234,11 @@ export default function OnboardingSlides() {
               <Text style={[styles.nextText, { fontFamily: "Inter_700Bold" }]}>
                 {t("onboarding.start")}
               </Text>
-            </LinearGradient>
+            </View>
           </TouchableOpacity>
         ) : (
           <TouchableOpacity onPress={handleNext} activeOpacity={0.85}>
-            <LinearGradient
+            <View
               colors={[colors.coral, colors.orange]}
               style={styles.nextBtn}
               start={{ x: 0, y: 0 }}
@@ -249,7 +249,7 @@ export default function OnboardingSlides() {
               >
                 {t("onboarding.next")}
               </Text>
-            </LinearGradient>
+            </View>
           </TouchableOpacity>
         )}
       </View>

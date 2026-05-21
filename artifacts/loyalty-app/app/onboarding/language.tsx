@@ -8,7 +8,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
-import { LinearGradient } from "expo-linear-gradient";
+
 import { useColors } from "@/hooks/useColors";
 import { useApp, Language } from "@/context/AppContext";
 import { Button } from "@/components/ui/Button";
@@ -34,7 +34,7 @@ export default function LanguageScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar barStyle="light-content" />
-      <LinearGradient
+      <View
         colors={["#1a1a6e", "#2C3E8C", "#1a5276"]}
         style={styles.header}
       >
@@ -43,7 +43,7 @@ export default function LanguageScreen() {
         <Text allowFontScaling={false} style={[styles.tagline, { fontFamily: "Inter_400Regular" }]}>
           {t("splash.tagline")}
         </Text>
-      </LinearGradient>
+      </View>
 
       <View style={styles.content}>
         <Text allowFontScaling={false} style={[styles.title, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>

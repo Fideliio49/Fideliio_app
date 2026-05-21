@@ -9,7 +9,7 @@ import Animated, {
   Easing,
 } from "react-native-reanimated";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
+
 import { iconSize } from "@/utils/responsive";
 
 const { width: W } = Dimensions.get("window");
@@ -153,7 +153,7 @@ export function SplashAnimation() {
 
       {/* Center F card */}
       <Animated.View style={[styles.cardWrap, cardStyle]}>
-        <LinearGradient
+        <View
           colors={["#1a1a6e", "#C85A17"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
@@ -161,7 +161,7 @@ export function SplashAnimation() {
         >
           <Text style={styles.fLetter}>F</Text>
           <View style={styles.goldDot} />
-        </LinearGradient>
+        </View>
       </Animated.View>
     </View>
   );

@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { fs, iconSize, sp } from "@/utils/responsive";
 import { useRouter } from "expo-router";
-import { LinearGradient } from "expo-linear-gradient";
+
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
@@ -154,21 +154,29 @@ export default function MerchantSetupScreen() {
           },
           { onConflict: "merchant_id" },
         );
+        // ✅ APRÈS — via RPC, billing_cycle transmis, trigger déclenché proprement
       } else {
-        const expiresAt = new Date();
-        expiresAt.setMonth(expiresAt.getMonth() + 1);
-        await supabase.from("subscriptions").upsert(
-          {
-            merchant_id: merchant.id,
-            plan: plan,
-            status: "trial",
-            started_at: new Date().toISOString(),
-            expires_at: expiresAt.toISOString(),
-            customer_limit: null,
-            max_stores: maxStores,
-          },
-          { onConflict: "merchant_id" },
-        );
+        const { data: result, error } = await supabase.rpc("start_trial", {
+          p_merchant_id: merchant.id,
+          p_plan: plan,
+          p_max_stores: maxStores,
+          p_billing_cycle: billingCycle, // "monthly" | "annual"
+        });
+
+        if (error) throw error;
+
+        const res = Array.isArray(result) ? result[0] : result;
+        if (!res?.success)
+          throw new Error(res?.message ?? "Erreur démarrage essai");
+
+        const expiresAt = res.expires_at
+          ? new Date(res.expires_at)
+          : (() => {
+              const d = new Date();
+              d.setMonth(d.getMonth() + 1);
+              return d;
+            })();
+
         setTrialExpiry(
           expiresAt.toLocaleDateString(
             language === "ar" ? "ar-MA" : language === "en" ? "en-GB" : "fr-FR",
@@ -398,7 +406,7 @@ export default function MerchantSetupScreen() {
             activeOpacity={0.88}
             style={styles.ctaWrap}
           >
-            <LinearGradient
+            <View
               colors={["#1a237e", "#0288d1"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
@@ -408,7 +416,7 @@ export default function MerchantSetupScreen() {
                 {l("Commencer maintenant", "Get started", "ابدأ الآن")}
               </Text>
               <Feather name="arrow-right" size={iconSize(18)} color="#fff" />
-            </LinearGradient>
+            </View>
           </TouchableOpacity>
         </ScrollView>
       </View>
@@ -612,7 +620,7 @@ export default function MerchantSetupScreen() {
             activeOpacity={0.88}
             style={[styles.ctaWrap, { marginTop: sp(24) }]}
           >
-            <LinearGradient
+            <View
               colors={["#9B59B6", "#8E44AD"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
@@ -628,7 +636,7 @@ export default function MerchantSetupScreen() {
                       "ابدأ التجربة المجانية",
                     )}
               </Text>
-            </LinearGradient>
+            </View>
           </TouchableOpacity>
         </ScrollView>
       </View>
@@ -944,12 +952,12 @@ export default function MerchantSetupScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <LinearGradient
+          <View
             colors={["#1a237e", "#0288d1"]}
             style={styles.headerIcon}
           >
             <Feather name="briefcase" size={iconSize(28)} color="#fff" />
-          </LinearGradient>
+          </View>
           <Text
             style={[
               styles.formTitle,
@@ -1044,7 +1052,7 @@ export default function MerchantSetupScreen() {
           disabled={!bizName.trim() || !category}
           style={[styles.ctaWrap, { marginTop: sp(24) }]}
         >
-          <LinearGradient
+          <View
             colors={["#1a237e", "#0288d1"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
@@ -1060,7 +1068,7 @@ export default function MerchantSetupScreen() {
               {l("Continuer", "Continue", "متابعة")}
             </Text>
             <Feather name="arrow-right" size={iconSize(18)} color="#fff" />
-          </LinearGradient>
+          </View>
         </TouchableOpacity>
       </ScrollView>
     </View>

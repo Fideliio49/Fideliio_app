@@ -9,35 +9,68 @@ import {
 import { fs } from "@/utils/responsive";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
-import { LinearGradient } from "expo-linear-gradient";
+
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { FideliioLogo } from "@/components/FideliioLogo";
+import { useApp } from "@/context/AppContext";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export default function RoleScreen() {
   const colors = useColors();
   const { t } = useTranslation();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-
+  const { user } = useApp();
   const topPad = Platform.OS === "web" ? 67 : insets.top + 16;
 
-  function handleRole(role: "customer" | "merchant") {
-    router.push(`/auth/login?role=${role}`);
+  async function handleRole(role: "customer" | "merchant") {
+    if (user) {
+      // ✅ Déjà connecté → naviguer directement sans repasser par login
+      await AsyncStorage.setItem("@active_role", role);
+      if (role === "customer") {
+        router.replace("/(customer)/home");
+      } else {
+        // Merchant → vérification abonnement via auth/role
+        router.replace("/auth/role");
+      }
+    } else {
+      // Pas connecté → login avec le role en paramètre
+      router.push(`/auth/login?role=${role}`);
+    }
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.card, paddingTop: topPad }]}>
+    <View
+      style={[
+        styles.container,
+        { backgroundColor: colors.card, paddingTop: topPad },
+      ]}
+    >
       <View style={styles.top}>
-        <FideliioLogo size={56} showName nameSize={20} nameColor={colors.foreground} />
-        <Text style={[styles.title, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
+        <FideliioLogo
+          size={56}
+          showName
+          nameSize={20}
+          nameColor={colors.foreground}
+        />
+        <Text
+          style={[
+            styles.title,
+            { color: colors.foreground, fontFamily: "Inter_700Bold" },
+          ]}
+        >
           {t("role.choose")}
         </Text>
-        <Text style={[styles.sub, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
+        <Text
+          style={[
+            styles.sub,
+            { color: colors.mutedForeground, fontFamily: "Inter_400Regular" },
+          ]}
+        >
           {t("role.chooseSub")}
         </Text>
       </View>
-
       <View style={styles.cards}>
         {/* Customer card */}
         <TouchableOpacity
@@ -45,7 +78,7 @@ export default function RoleScreen() {
           activeOpacity={0.88}
           style={styles.cardWrap}
         >
-          <LinearGradient
+          <View
             colors={["#FF6B6B", "#FF8E53"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
@@ -58,7 +91,7 @@ export default function RoleScreen() {
             <Text style={[styles.cardSub, { fontFamily: "Inter_400Regular" }]}>
               {t("role.customerSub")}
             </Text>
-          </LinearGradient>
+          </View>
         </TouchableOpacity>
 
         {/* Merchant card */}
@@ -67,7 +100,7 @@ export default function RoleScreen() {
           activeOpacity={0.88}
           style={styles.cardWrap}
         >
-          <LinearGradient
+          <View
             colors={["#2C3E8C", "#00B4D8"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
@@ -80,7 +113,7 @@ export default function RoleScreen() {
             <Text style={[styles.cardSub, { fontFamily: "Inter_400Regular" }]}>
               {t("role.merchantSub")}
             </Text>
-          </LinearGradient>
+          </View>
         </TouchableOpacity>
       </View>
     </View>

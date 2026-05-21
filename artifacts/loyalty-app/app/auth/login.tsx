@@ -9,10 +9,10 @@ import {
   Keyboard,
 } from "react-native";
 import { fs } from "@/utils/responsive";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { Feather } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
+
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useColors } from "@/hooks/useColors";
 import { useApp } from "@/context/AppContext";
@@ -25,14 +25,14 @@ import * as WebBrowser from "expo-web-browser";
 // ✅ Nécessaire pour fermer le browser après le OAuth sur Android
 WebBrowser.maybeCompleteAuthSession();
 
-const GOOGLE_CLIENT_ID =
-  "199143368759-2nekgkh7bhnagv7int2qb5e7d4di1n5u.apps.googleusercontent.com";
-
 export default function LoginScreen() {
   const colors = useColors();
   const { t } = useTranslation();
   const router = useRouter();
   const { completeOnboarding, language } = useApp();
+
+  // ✅ Lire le role passé en paramètre URL (/auth/login?role=customer)
+  const { role: roleParam } = useLocalSearchParams<{ role?: string }>();
 
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
@@ -47,14 +47,12 @@ export default function LoginScreen() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // ✅ Écouter UNIQUEMENT après un clic Google — pas au montage
   const googleAuthPending = React.useRef(false);
 
   useEffect(() => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      // ✅ Ne naviguer que si c'est nous qui avons déclenché le Google OAuth
       if (event === "SIGNED_IN" && session && googleAuthPending.current) {
         googleAuthPending.current = false;
         setGoogleLoading(false);
@@ -64,28 +62,33 @@ export default function LoginScreen() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Pas besoin de redirectUri custom — on utilise directement Supabase callback
-
-  // ─── Navigation après auth réussie ───────────────────────
-
   function isValidEmail(email: string): boolean {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   }
 
+  // ── Navigation après auth réussie ────────────────────────
   async function navigateAfterAuth() {
     await completeOnboarding();
+
     const storedRole = await AsyncStorage.getItem("@active_role");
-    if (storedRole) {
-      router.replace(
-        storedRole === "merchant" ? "/(merchant)/home" : "/(customer)/home",
-      );
+
+    // FIX — priorité : storedRole → roleParam → /auth/role
+    const effectiveRole = storedRole ?? roleParam ?? null;
+
+    if (effectiveRole === "customer") {
+      await AsyncStorage.setItem("@active_role", "customer");
+      router.replace("/(customer)/home");
+    } else if (effectiveRole === "merchant") {
+      await AsyncStorage.setItem("@active_role", "merchant");
+      // Passer par /auth/role pour vérifier l'abonnement
+      router.replace("/auth/role");
     } else {
+      // Aucun role connu → choix
       router.replace("/auth/role");
     }
   }
 
-  // ─── Google OAuth ─────────────────────────────────────────
-
+  // ── Google OAuth ──────────────────────────────────────────
   async function handleGoogleLogin() {
     try {
       setGoogleLoading(true);
@@ -101,23 +104,19 @@ export default function LoginScreen() {
       if (error || !data?.url)
         throw error ?? new Error("URL Google introuvable");
 
-      // ✅ Marquer qu'on attend un retour Google
       googleAuthPending.current = true;
 
-      // Ouvrir le browser — la navigation se fait via onAuthStateChange
       const result = await WebBrowser.openAuthSessionAsync(
         data.url,
         "loyalty-app://auth/callback",
       );
 
-      // Si l'utilisateur ferme le browser sans se connecter
       if (result.type !== "success") {
         googleAuthPending.current = false;
         setGoogleLoading(false);
         return;
       }
 
-      // ✅ Extraire les tokens de l'URL de retour et créer la session manuellement
       const returnUrl = result.url ?? "";
       const hashParams = new URLSearchParams(
         returnUrl.includes("#")
@@ -133,9 +132,7 @@ export default function LoginScreen() {
           refresh_token: refreshToken,
         });
         if (sessionError) throw sessionError;
-        // onAuthStateChange va capter SIGNED_IN et naviguer
       } else {
-        // Fallback — vérifier la session directement
         const { data: sessionData } = await supabase.auth.getSession();
         if (sessionData?.session) {
           setGoogleLoading(false);
@@ -152,8 +149,7 @@ export default function LoginScreen() {
     }
   }
 
-  // ─── Email / Password ─────────────────────────────────────
-
+  // ── Email / Password ──────────────────────────────────────
   async function handleSubmit() {
     const errs: Record<string, string> = {};
     if (!email.trim()) {
@@ -219,7 +215,16 @@ export default function LoginScreen() {
           throw error;
         }
         await completeOnboarding();
-        router.replace("/auth/role");
+        // Après inscription → utiliser le roleParam si disponible
+        if (roleParam === "customer") {
+          await AsyncStorage.setItem("@active_role", "customer");
+          router.replace("/(customer)/home");
+        } else if (roleParam === "merchant") {
+          await AsyncStorage.setItem("@active_role", "merchant");
+          router.replace("/auth/role");
+        } else {
+          router.replace("/auth/role");
+        }
       }
     } catch (e: any) {
       const msg = e?.message ?? "";
@@ -235,8 +240,7 @@ export default function LoginScreen() {
     }
   }
 
-  // ─── Render ───────────────────────────────────────────────
-
+  // ── Render ────────────────────────────────────────────────
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAwareScrollView
@@ -413,7 +417,7 @@ export default function LoginScreen() {
           activeOpacity={0.88}
           disabled={loading || googleLoading}
         >
-          <LinearGradient
+          <View
             colors={["#C85A17", "#E67E22"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
@@ -429,7 +433,7 @@ export default function LoginScreen() {
                   ? t("auth.login")
                   : t("auth.register")}
             </Text>
-          </LinearGradient>
+          </View>
         </TouchableOpacity>
 
         {/* Divider */}
@@ -446,7 +450,7 @@ export default function LoginScreen() {
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
         </View>
 
-        {/* ✅ Bouton Google fonctionnel */}
+        {/* Bouton Google */}
         <TouchableOpacity
           onPress={handleGoogleLogin}
           disabled={googleLoading || loading}
@@ -473,7 +477,7 @@ export default function LoginScreen() {
           </Text>
         </TouchableOpacity>
 
-        {/* ✅ Bouton Téléphone */}
+        {/* Bouton Téléphone */}
         <TouchableOpacity
           onPress={() => router.push("/auth/phone-otp")}
           disabled={loading || googleLoading}

@@ -4,12 +4,28 @@ import { Platform } from "react-native";
 import { supabase } from "./supabase";
 
 // ── Config affichage des notifications reçues ─────────────
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
+  handleNotification: async (notification) => {
+    const role = await AsyncStorage.getItem("@active_role");
+    const type = notification.request.content.data?.type;
+
+    // Ne pas afficher les notifs "points_earned" sur l'appareil commerçant
+    if (role === "merchant" && type === "points_earned") {
+      return {
+        shouldShowAlert: false,
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+      };
+    }
+
+    return {
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+    };
+  },
 });
 
 // ── Enregistrer le token push du user ─────────────────────

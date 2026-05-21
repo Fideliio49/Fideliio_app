@@ -373,7 +373,7 @@ export default function CustomerQrCodeScreen() {
       </ViewShot>
 
       {/* ✅ Progression par commerçant */}
-      {merchantProgress.length > 0 && (
+      {/*{merchantProgress.length > 0 && (
         <View
           style={[
             styles.progressSection,
@@ -467,7 +467,7 @@ export default function CustomerQrCodeScreen() {
             );
           })}
         </View>
-      )}
+      )}*/}
 
       {/* Hint */}
       <View

@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet, ViewStyle } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
+
 
 interface FideliioLogoProps {
   size?: number;
@@ -21,7 +21,7 @@ export function FideliioLogo({
 
   return (
     <View style={[styles.wrap, style]}>
-      <LinearGradient
+      <View
         colors={["#FF6B6B", "#FF8E53"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
@@ -43,7 +43,7 @@ export function FideliioLogo({
         >
           F
         </Text>
-      </LinearGradient>
+      </View>
       {showName && (
         <Text
           style={[
