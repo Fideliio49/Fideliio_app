@@ -28,9 +28,6 @@ import { supabase } from "@/lib/supabase";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { AvatarPicker } from "@/components/AvatarPicker";
-import * as DocumentPicker from "expo-document-picker";
-import * as ImagePicker from "expo-image-picker";
-import * as FileSystem from "expo-file-system/legacy";
 
 const LANGS: { code: Language; label: string; flag: string }[] = [
   { code: "fr", label: "Français", flag: "🇫🇷" },
@@ -52,15 +49,68 @@ const PRO_PLUS_STORES = [
   { stores: 5, monthly: 395, annual: 3950 },
 ];
 
-const ADMIN_RIB = {
-  name: "Fideliio SARL",
-  rib: "007 780 0001234567890123 45",
-  bank: "CIH Bank",
+// ⚠️ Remplace ces valeurs par tes vraies coordonnées
+const ADMIN_CONTACT = {
   whatsapp: "+212600000000",
   whatsappDisplay: "+212 6 00 00 00 00",
 };
 
-// ── Helpers ───────────────────────────────────────────────────
+type PayField = { label: string | Record<string, string>; value: string };
+type PayMethod = {
+  key: "bank" | "cashplus" | "wafacash";
+  label: Record<string, string>;
+  icon: keyof typeof Feather.glyphMap;
+  color: string;
+  fields: PayField[];
+  note?: Record<string, string>;
+};
+
+// ⚠️ Remplace les valeurs (RIB, nom, téléphone) par tes vraies coordonnées
+const PAYMENT_METHODS: PayMethod[] = [
+  {
+    key: "bank",
+    label: { fr: "Virement", en: "Transfer", ar: "تحويل" },
+    icon: "credit-card",
+    color: "#2C3E8C",
+    fields: [
+      { label: { fr: "Bénéficiaire", en: "Beneficiary", ar: "المستفيد" }, value: "Fideliio SARL" },
+      { label: "RIB", value: "007 780 0001234567890123 45" },
+      { label: { fr: "Banque", en: "Bank", ar: "البنك" }, value: "CIH Bank" },
+    ],
+  },
+  {
+    key: "cashplus",
+    label: { fr: "CashPlus", en: "CashPlus", ar: "CashPlus" },
+    icon: "smartphone",
+    color: "#E67E22",
+    fields: [
+      { label: { fr: "Nom", en: "Name", ar: "الاسم" }, value: "Nom Prénom" },
+      { label: { fr: "Téléphone", en: "Phone", ar: "الهاتف" }, value: "+212 6 00 00 00 00" },
+    ],
+    note: {
+      fr: "Présentez ce nom et ce numéro à l'agent CashPlus.",
+      en: "Give this name and number to the CashPlus agent.",
+      ar: "قدّم هذا الاسم والرقم لوكيل CashPlus.",
+    },
+  },
+  {
+    key: "wafacash",
+    label: { fr: "Wafacash", en: "Wafacash", ar: "Wafacash" },
+    icon: "dollar-sign",
+    color: "#9B59B6",
+    fields: [
+      { label: { fr: "Nom", en: "Name", ar: "الاسم" }, value: "Nom Prénom" },
+      { label: { fr: "Téléphone", en: "Phone", ar: "الهاتف" }, value: "+212 6 00 00 00 00" },
+    ],
+    note: {
+      fr: "Présentez ce nom et ce numéro à l'agent Wafacash.",
+      en: "Give this name and number to the Wafacash agent.",
+      ar: "قدّم هذا الاسم والرقم لوكيل Wafacash.",
+    },
+  },
+];
+
+// Helpers
 function getPlanDisplayLabel(plan: string, lang: string) {
   const m: Record<string, Record<string, string>> = {
     pro: { fr: "Pro", en: "Pro", ar: "Pro" },
@@ -107,7 +157,7 @@ function formatDate(iso: string, lang: string) {
   } catch { return iso; }
 }
 
-// ── Sub-components ────────────────────────────────────────────
+// Sub-components
 function SettingsRow({ icon, iconColor, label, value, onPress, rightElement, isRTL = false }: {
   icon: keyof typeof Feather.glyphMap; iconColor: string; label: string;
   value?: string; onPress?: () => void; rightElement?: React.ReactNode; isRTL?: boolean;
@@ -164,7 +214,7 @@ function BottomModal({ visible, onClose, title, children, colors }: any) {
   );
 }
 
-// ── Main ──────────────────────────────────────────────────────
+// Main
 export default function MerchantProfileScreen() {
   const colors = useColors();
   const { t } = useTranslation();
@@ -184,7 +234,7 @@ export default function MerchantProfileScreen() {
     return fr;
   }
 
-  // ── State ──
+  // State
   const [merchant, setMerchant] = useState<any>(null);
   const [totalCustomers, setTotalCustomers] = useState(0);
   const [notifications, setNotifications] = useState(true);
@@ -196,7 +246,7 @@ export default function MerchantProfileScreen() {
   const [paymentInfo, setPaymentInfo] = useState<any>(null);
   const [paymentHistory, setPaymentHistory] = useState<any[]>([]);
 
-  // ── Modal ──
+  // Modal
   const [activeModal, setActiveModal] = useState<
     "none" | "info" | "rate" | "presets" | "lang" | "color" | "tier"
     | "sub" | "changePlan" | "requestSent" | "payment"
@@ -208,21 +258,20 @@ export default function MerchantProfileScreen() {
   }
   function closeModal() { setActiveModal("none"); }
 
-  // ── Plan request state ──
+  // Plan request state
   const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">("monthly");
   const [selectedStores, setSelectedStores] = useState(2);
   const [requestingPlan, setRequestingPlan] = useState(false);
 
-  // ── Payment upload state ──
-  const [uploadingProof, setUploadingProof] = useState(false);
-  const [proofFileName, setProofFileName] = useState<string | null>(null);
+  // Méthode de paiement sélectionnée
+  const [selectedPayMethod, setSelectedPayMethod] = useState<"bank" | "cashplus" | "wafacash">("bank");
 
-  // ── Activation code ──
+  // Activation code
   const [showActivationInput, setShowActivationInput] = useState(false);
   const [activationCode, setActivationCode] = useState("");
   const [activating, setActivating] = useState(false);
 
-  // ── Form fields ──
+  // Form fields
   const [firstName, setFirstName] = useState(user?.firstName ?? "");
   const [lastName, setLastName] = useState(user?.lastName ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
@@ -239,7 +288,7 @@ export default function MerchantProfileScreen() {
   const [goldThreshold, setGoldThreshold] = useState("5000");
   const [savingTiers, setSavingTiers] = useState(false);
 
-  // ── Toast ──
+  // Toast
   const [toastMsg, setToastMsg] = useState("");
   const [toastType, setToastType] = useState<"success" | "error">("success");
   const [toastVisible, setToastVisible] = useState(false);
@@ -287,25 +336,22 @@ export default function MerchantProfileScreen() {
       setSubscription({ ...subData[0], billing_cycle: (subRow?.billing_cycle ?? "monthly") as BillingCycle });
     }
 
-    // Demande en attente
     const { data: reqData } = await supabase.from("plan_requests")
       .select("*").eq("merchant_id", data.id).eq("status", "pending")
       .order("created_at", { ascending: false }).limit(1).maybeSingle();
     setPendingRequest(reqData ?? null);
 
-    // Infos paiement actuel
     const { data: payInfo } = await supabase.from("merchant_payment_info")
       .select("*").eq("merchant_id", data.id).maybeSingle();
     setPaymentInfo(payInfo ?? null);
 
-    // Historique 3 derniers paiements
     const { data: payHist } = await supabase.from("payments")
       .select("*").eq("merchant_id", data.id)
       .order("created_at", { ascending: false }).limit(3);
     setPaymentHistory(payHist ?? []);
   }
 
-  // ── Computed plan values ──
+  // Computed plan values
   const planKey = subscription?.plan ?? "none";
   const planColor = getPlanColor(planKey);
   const planLabel = getPlanDisplayLabel(planKey, lang);
@@ -321,11 +367,11 @@ export default function MerchantProfileScreen() {
     if (isSuspended) return l("Compte suspendu", "Account suspended", "حساب موقوف");
     if (!subscription?.has_subscription) return l("Gratuit", "Free", "مجاني");
     if (isTrial) {
-      if (daysLeft <= 7) return `${planLabel} — ${l("Essai", "Trial", "تجريبي")} · J-${daysLeft}`;
-      return `${planLabel} — ${l("Essai", "Trial", "تجريبي")}`;
+      if (daysLeft <= 7) return planLabel + " - " + l("Essai", "Trial", "تجريبي") + " J-" + daysLeft;
+      return planLabel + " - " + l("Essai", "Trial", "تجريبي");
     }
-    if (!isActive) return `${planLabel} — ${l("Expiré", "Expired", "منتهي")}`;
-    if (daysLeft < 10 && daysLeft > 0) return `${planLabel} · J-${daysLeft}`;
+    if (!isActive) return planLabel + " - " + l("Expiré", "Expired", "منتهي");
+    if (daysLeft < 10 && daysLeft > 0) return planLabel + " J-" + daysLeft;
     return planLabel;
   }
 
@@ -333,15 +379,15 @@ export default function MerchantProfileScreen() {
     if (isSuspended) return l("Suspendu", "Suspended", "موقوف");
     if (!subscription?.has_subscription || planKey === "none") return l("Plan gratuit", "Free plan", "خطة مجانية");
     if (isTrial) {
-      if (daysLeft <= 7) return l(`Essai · ${daysLeft} jour(s)`, `Trial · ${daysLeft} day(s)`, `تجريبي · ${daysLeft} يوم`);
+      if (daysLeft <= 7) return l("Essai - " + daysLeft + " jour(s)", "Trial - " + daysLeft + " day(s)", "تجريبي · " + daysLeft + " يوم");
       return l("Essai", "Trial", "تجريبي");
     }
     if (!isActive) return l("Expiré", "Expired", "منتهي");
-    if (daysLeft < 10) return l(`Expire dans ${daysLeft}j`, `Expires in ${daysLeft}d`, `ينتهي خلال ${daysLeft} يوم`);
+    if (daysLeft < 10) return l("Expire dans " + daysLeft + "j", "Expires in " + daysLeft + "d", "ينتهي خلال " + daysLeft + " يوم");
     return l(
-      `Actif · ${currentCycle === "annual" ? "Annuel" : "Mensuel"}`,
-      `Active · ${currentCycle === "annual" ? "Annual" : "Monthly"}`,
-      `نشط · ${currentCycle === "annual" ? "سنوي" : "شهري"}`,
+      "Actif - " + (currentCycle === "annual" ? "Annuel" : "Mensuel"),
+      "Active - " + (currentCycle === "annual" ? "Annual" : "Monthly"),
+      "نشط · " + (currentCycle === "annual" ? "سنوي" : "شهري"),
     );
   }
 
@@ -353,14 +399,13 @@ export default function MerchantProfileScreen() {
     return "#27AE60";
   }
 
-  // ── Payment row label ──
   function getPaymentRowLabel() {
     if (pendingRequest) return l("En attente de validation", "Pending validation", "قيد التحقق");
-    if (isTrial) return l(`Essai gratuit · J-${daysLeft}`, `Free trial · ${daysLeft}d left`, `تجريبي · ${daysLeft} يوم`);
+    if (isTrial) return l("Essai gratuit - J-" + daysLeft, "Free trial - " + daysLeft + "d left", "تجريبي · " + daysLeft + " يوم");
     if (paymentInfo) {
       const amount = paymentInfo.amount;
       const dueDate = formatDate(paymentInfo.next_payment_date, lang);
-      return `${amount} DH · ${dueDate}`;
+      return amount + " DH - " + dueDate;
     }
     return l("Aucun paiement actif", "No active payment", "لا يوجد دفع نشط");
   }
@@ -380,157 +425,75 @@ export default function MerchantProfileScreen() {
     return "alert-circle";
   }
 
-  // ── Prix modaux ──
+  // Prix modaux
   const proPrice = billingCycle === "annual" ? PRO_PRICE.annual : PRO_PRICE.monthly;
   const proPriceSuffix = billingCycle === "annual" ? l("/an", "/year", "/سنة") : l("/mois", "/month", "/شهر");
   const selectedPP = PRO_PLUS_STORES.find((p) => p.stores === selectedStores) ?? PRO_PLUS_STORES[0];
   const ppPrice = billingCycle === "annual" ? selectedPP.annual : selectedPP.monthly;
   const ppPriceSuffix = proPriceSuffix;
 
-  // ── Upload justificatif ──
-  async function handlePickProof() {
-    Alert.alert(
-      l("Ajouter un justificatif", "Add proof", "إضافة إيصال"),
-      l("Choisissez la source", "Choose source", "اختر المصدر"),
-      [
-        {
-          text: l("Photo", "Photo", "صورة"),
-          onPress: handlePickImage,
-        },
-        {
-          text: l("Document (PDF)", "Document (PDF)", "مستند PDF"),
-          onPress: handlePickDocument,
-        },
-        { text: l("Annuler", "Cancel", "إلغاء"), style: "cancel" },
-      ],
+  // WhatsApp
+  function openWhatsApp(message: string) {
+    Linking.openURL("https://wa.me/" + ADMIN_CONTACT.whatsapp.replace(/\D/g, "") + "?text=" + encodeURIComponent(message));
+  }
+
+  // Bloc méthodes de paiement (réutilisé dans 2 modals)
+  function renderPaymentMethods() {
+    const method = PAYMENT_METHODS.find((m) => m.key === selectedPayMethod) ?? PAYMENT_METHODS[0];
+    return (
+      <View style={{ gap: sp(10) }}>
+        <Text style={{ color: colors.foreground, fontFamily: "Inter_700Bold", fontSize: fs(14), textAlign }}>
+          {l("Comment payer", "How to pay", "كيفية الدفع")}
+        </Text>
+
+        <View style={styles.payTabs}>
+          {PAYMENT_METHODS.map((m) => {
+            const sel = m.key === selectedPayMethod;
+            return (
+              <TouchableOpacity key={m.key} onPress={() => setSelectedPayMethod(m.key)}
+                style={[styles.payTab, { backgroundColor: sel ? m.color : colors.background, borderColor: sel ? m.color : colors.border }]}>
+                <Feather name={m.icon} size={iconSize(15)} color={sel ? "#fff" : colors.mutedForeground} />
+                <Text numberOfLines={1} style={{ color: sel ? "#fff" : colors.mutedForeground, fontFamily: "Inter_600SemiBold", fontSize: fs(11) }}>
+                  {m.label[lang]}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <View style={[styles.ribBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
+          {method.fields.map((f, i) => (
+            <View key={i} style={[styles.ribRow, i > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}>
+              <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: fs(12) }}>
+                {typeof f.label === "string" ? f.label : f.label[lang]}
+              </Text>
+              <Text selectable style={{ color: colors.foreground, fontFamily: "Inter_700Bold", fontSize: fs(13) }}>
+                {f.value}
+              </Text>
+            </View>
+          ))}
+          {method.note && (
+            <View style={[styles.payMethodNote, { borderTopWidth: 1, borderTopColor: colors.border }]}>
+              <Feather name="info" size={iconSize(12)} color={method.color} />
+              <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: fs(11), flex: 1, lineHeight: 16 }}>
+                {method.note[lang]}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: fs(11), textAlign, lineHeight: 16 }}>
+          {l(
+            "Appui long sur une valeur pour la copier. Après paiement, envoyez le reçu par WhatsApp.",
+            "Long press a value to copy it. After payment, send the receipt via WhatsApp.",
+            "اضغط مطولاً على القيمة لنسخها. بعد الدفع، أرسل الإيصال عبر واتساب.",
+          )}
+        </Text>
+      </View>
     );
   }
 
-  async function handlePickImage() {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      showToast(l("Permission refusée", "Permission denied", "تم رفض الإذن"), "error");
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-    });
-    if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      // ✅ Copier vers le cache d'abord comme AvatarPicker
-      const cacheUri = FileSystem.cacheDirectory + `proof_${Date.now()}.jpg`;
-      await FileSystem.copyAsync({ from: asset.uri, to: cacheUri });
-      await uploadProof(cacheUri, `proof_${Date.now()}.jpg`, "image/jpeg");
-    }
-  }
-
-  async function handlePickDocument() {
-    const result = await DocumentPicker.getDocumentAsync({
-      type: ["application/pdf", "image/*"],
-      copyToCacheDirectory: true,
-    });
-    if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      await uploadProof(asset.uri, asset.name, asset.mimeType ?? "application/pdf");
-    }
-  }
-
-  async function uploadProof(uri: string, fileName: string, mimeType: string) {
-    if (!merchant?.id || !user?.id) return;
-    setUploadingProof(true);
-    const currentPendingRequest = pendingRequest;
-    try {
-      // ✅ Copier vers le cache d'abord
-      const cacheUri = FileSystem.cacheDirectory + fileName;
-      await FileSystem.copyAsync({ from: uri, to: cacheUri });
-
-      const base64 = await FileSystem.readAsStringAsync(cacheUri, {
-        encoding: "base64" as any,
-      });
-      const byteCharacters = atob(base64);
-      const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-      }
-      const byteArray = new Uint8Array(byteNumbers);
-
-      const ext = fileName.split(".").pop() ?? "jpg";
-      const path = `${user.id}/${merchant.id}_${Date.now()}.${ext}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("payment-proofs")
-        .upload(path, byteArray, { contentType: mimeType, upsert: true });
-
-      if (uploadError) throw uploadError;
-
-      const { data: urlData } = supabase.storage.from("payment-proofs").getPublicUrl(path);
-      const proofUrl = urlData.publicUrl;
-
-      if (currentPendingRequest) {
-        await supabase.rpc("upload_payment_proof", {
-          p_merchant_id: merchant.id,
-          p_request_id: currentPendingRequest.id,
-          p_proof_url: proofUrl,
-        });
-      } else if (paymentInfo) {
-        const { data: lastPayment } = await supabase
-          .from("payments").select("id")
-          .eq("merchant_id", merchant.id).eq("status", "confirmed")
-          .order("created_at", { ascending: false }).limit(1).maybeSingle();
-        if (lastPayment) {
-          await supabase.from("payments")
-            .update({ proof_url: proofUrl, proof_uploaded_at: new Date().toISOString() })
-            .eq("id", lastPayment.id);
-        }
-      }
-
-      setProofFileName(fileName);
-      await loadMerchant();
-      showToast(l("✓ Justificatif envoyé", "✓ Proof uploaded", "✓ تم إرسال الإيصال"));
-
-      // ✅ currentPendingRequest au lieu de pendingRequest
-      if (currentPendingRequest) {
-        await supabase.functions.invoke("subscription-notif", {
-          body: {
-            type: "PLAN_REQUEST",
-            record: { ...currentPendingRequest, proof_url: proofUrl },
-          },
-        });
-      }
-
-      setTimeout(() => {
-        Alert.alert(
-          l("Notifier l'équipe ?", "Notify the team?", "إشعار الفريق؟"),
-          l(
-            "Souhaitez-vous envoyer un message WhatsApp pour confirmer votre paiement ?",
-            "Would you like to send a WhatsApp message to confirm your payment?",
-            "هل تريد إرسال رسالة واتساب لتأكيد دفعتك؟",
-          ),
-          [
-            { text: l("Non", "No", "لا"), style: "cancel" },
-            {
-              text: l("Oui", "Yes", "نعم"),
-              onPress: () => Linking.openURL(
-                `https://wa.me/${ADMIN_RIB.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(
-                  lang === "ar"
-                    ? "مرحباً، لقد أرسلت إيصال الدفع لاشتراك Fideliio. الرجاء التحقق."
-                    : lang === "en"
-                      ? "Hello, I've uploaded my payment proof for my Fideliio subscription. Please verify."
-                      : "Bonjour, j'ai envoyé mon justificatif de paiement pour mon abonnement Fideliio. Merci de vérifier.",
-                )}`,
-              ),
-            },
-          ],
-        );
-      }, 500);
-    } catch (e: any) {
-      showToast(e?.message || l("Erreur upload", "Upload error", "خطأ في الرفع"), "error");
-    } finally {
-      setUploadingProof(false);
-    }
-  }
-  // ── Plan request ──
+  // Plan request
   async function handlePlanRequest(pKey: "pro" | "pro_plus", maxStores: number) {
     if (!merchant?.id) return;
     if (pendingRequest) {
@@ -538,16 +501,16 @@ export default function MerchantProfileScreen() {
       return;
     }
     const months = billingCycle === "annual" ? 12 : 1;
-    const planName = pKey === "pro" ? "Pro" : `Pro+ · ${maxStores} ${l("commerces", "stores", "متاجر")}`;
-    const price = pKey === "pro" ? `${proPrice} DH${proPriceSuffix}` : `${ppPrice} DH${ppPriceSuffix}`;
+    const planName = pKey === "pro" ? "Pro" : "Pro+ - " + maxStores + " " + l("commerces", "stores", "متاجر");
+    const price = pKey === "pro" ? proPrice + " DH" + proPriceSuffix : ppPrice + " DH" + ppPriceSuffix;
     closeModal();
     setTimeout(() => {
       Alert.alert(
         l("Confirmer la demande", "Confirm request", "تأكيد الطلب"),
         l(
-          `Passer au plan ${planName} (${price}).\n\nEffectuez un virement bancaire. Notre équipe activera votre plan sous 24h.`,
-          `Switch to ${planName} (${price}).\n\nMake a bank transfer. Our team will activate your plan within 24h.`,
-          `التبديل إلى ${planName} (${price}).\n\nقم بتحويل بنكي. سيقوم فريقنا بالتفعيل خلال 24 ساعة.`,
+          "Passer au plan " + planName + " (" + price + ").\n\nEffectuez le paiement (virement, CashPlus ou Wafacash). Notre équipe activera votre plan sous 24h.",
+          "Switch to " + planName + " (" + price + ").\n\nMake the payment (transfer, CashPlus or Wafacash). Our team will activate your plan within 24h.",
+          "التبديل إلى " + planName + " (" + price + ").\n\nقم بالدفع (تحويل، CashPlus أو Wafacash). سيقوم فريقنا بالتفعيل خلال 24 ساعة.",
         ),
         [
           { text: l("Annuler", "Cancel", "إلغاء"), style: "cancel" },
@@ -580,7 +543,7 @@ export default function MerchantProfileScreen() {
     }
   }
 
-  // ── Activation ──
+  // Activation
   async function handleActivate() {
     if (!activationCode.trim() || !merchant?.id) return;
     setActivating(true);
@@ -592,7 +555,7 @@ export default function MerchantProfileScreen() {
       if (!res?.success) { showToast(l("Code invalide ou expiré", "Invalid or expired code", "رمز غير صالح"), "error"); return; }
       setActivationCode(""); setShowActivationInput(false);
       await loadMerchant(); closeModal();
-      showToast(l("✓ Abonnement activé !", "✓ Subscription activated!", "✓ تم تفعيل الاشتراك!"));
+      showToast(l("Abonnement activé !", "Subscription activated!", "تم تفعيل الاشتراك!"));
     } catch (e: any) {
       showToast(e?.message || l("Erreur", "Error", "خطأ"), "error");
     } finally {
@@ -600,12 +563,12 @@ export default function MerchantProfileScreen() {
     }
   }
 
-  // ── Other handlers ──
+  // Other handlers
   async function handleLogoUploaded(url: string) {
     if (!merchant?.id) return;
     await supabase.from("merchants").update({ avatar_url: url }).eq("id", merchant.id);
     setMerchant((prev: any) => ({ ...prev, avatar_url: url }));
-    showToast(l("✓ Logo mis à jour", "✓ Logo updated", "✓ تم تحديث الشعار"));
+    showToast(l("Logo mis à jour", "Logo updated", "تم تحديث الشعار"));
   }
 
   async function handleSaveInfo() {
@@ -615,7 +578,7 @@ export default function MerchantProfileScreen() {
     try {
       await supabase.auth.updateUser({ data: { firstName: firstName.trim(), lastName: lastName.trim(), first_name: firstName.trim(), last_name: lastName.trim() } });
       if (merchant?.id) await supabase.from("merchants").update({ business_name: bizName.trim() || merchant.business_name, category }).eq("id", merchant.id);
-      await loadMerchant(); closeModal(); showToast("✓ " + t("profile.saveSuccess"));
+      await loadMerchant(); closeModal(); showToast(t("profile.saveSuccess"));
     } catch { showToast(t("common.error"), "error"); }
     finally { setSaving(false); }
   }
@@ -626,7 +589,7 @@ export default function MerchantProfileScreen() {
     setSavingRate(true);
     try {
       if (merchant?.id) await supabase.from("merchants").update({ points_rate: val }).eq("id", merchant.id);
-      await loadMerchant(); closeModal(); showToast("✓ " + t("profile.saveSuccess"));
+      await loadMerchant(); closeModal(); showToast(t("profile.saveSuccess"));
     } catch { showToast(t("common.error"), "error"); }
     finally { setSavingRate(false); }
   }
@@ -637,7 +600,7 @@ export default function MerchantProfileScreen() {
     setSavingPresets(true);
     try {
       if (merchant?.id) await supabase.from("merchants").update({ quick_points: pts.join(",") }).eq("id", merchant.id);
-      setPresets(pts); closeModal(); showToast("✓ " + t("profile.saveSuccess"));
+      setPresets(pts); closeModal(); showToast(t("profile.saveSuccess"));
     } catch { showToast(t("common.error"), "error"); }
     finally { setSavingPresets(false); }
   }
@@ -649,7 +612,7 @@ export default function MerchantProfileScreen() {
     setSavingTiers(true);
     try {
       if (merchant?.id) await supabase.from("merchants").update({ silver_threshold: silver, gold_threshold: gold }).eq("id", merchant.id);
-      await loadMerchant(); closeModal(); showToast("✓ " + t("profile.saveSuccess"));
+      await loadMerchant(); closeModal(); showToast(t("profile.saveSuccess"));
     } catch { showToast(t("common.error"), "error"); }
     finally { setSavingTiers(false); }
   }
@@ -672,12 +635,12 @@ export default function MerchantProfileScreen() {
     );
   }
 
-  const rateDisplay = `1 pt = ${merchant?.points_rate ?? 1} DH`;
+  const rateDisplay = "1 pt = " + (merchant?.points_rate ?? 1) + " DH";
   const presetsDisplay = presets.slice(0, 3).join(", ") + (presets.length > 3 ? "..." : "");
-  const tierDisplay = `🥈 ${merchant?.silver_threshold ?? 1000} · 🥇 ${merchant?.gold_threshold ?? 5000}`;
+  const tierDisplay = "🥈 " + (merchant?.silver_threshold ?? 1000) + " · 🥇 " + (merchant?.gold_threshold ?? 5000);
   const merchantInitials = (merchant?.business_name ?? user?.firstName ?? "M")[0].toUpperCase();
 
-  // ── Render ──
+  // Render
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
@@ -686,7 +649,7 @@ export default function MerchantProfileScreen() {
         <View style={[styles.heroSection, { paddingTop: topPad + 12, backgroundColor: colors.card, borderBottomColor: colors.border }]}>
           <AvatarPicker userId={user?.id ?? ""} currentUrl={merchant?.avatar_url} size={84} initials={merchantInitials} accentColor={merchantAccentColor} folder="merchant" onUploaded={handleLogoUploaded} />
           <Text style={[styles.heroName, { color: colors.foreground, fontFamily: "Inter_700Bold", marginTop: 8 }]}>{user?.firstName} {user?.lastName}</Text>
-          <Text style={[styles.heroBiz, { color: merchantAccentColor, fontFamily: "Inter_600SemiBold" }]}>{merchant?.business_name ?? "—"}</Text>
+          <Text style={[styles.heroBiz, { color: merchantAccentColor, fontFamily: "Inter_600SemiBold" }]}>{merchant?.business_name ?? "-"}</Text>
           <Text style={[styles.heroEmail, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>{user?.email ?? user?.phone ?? ""}</Text>
           <TouchableOpacity onPress={() => openModal("sub")}
             style={[styles.planBadge, { backgroundColor: planColor + "15", borderColor: planColor + "40" }]}>
@@ -708,9 +671,9 @@ export default function MerchantProfileScreen() {
         <SettingsSection title={t("profile.myInfo")} isRTL={isRTL}>
           <SettingsRow icon="user" iconColor={merchantAccentColor} label={`${user?.firstName ?? ""} ${user?.lastName ?? ""}`} onPress={() => openModal("info")} isRTL={isRTL} />
           <Separator />
-          <SettingsRow icon="mail" iconColor="#3498DB" label={user?.email ?? user?.phone ?? "—"} onPress={() => openModal("info")} isRTL={isRTL} />
+          <SettingsRow icon="mail" iconColor="#3498DB" label={user?.email ?? user?.phone ?? "-"} onPress={() => openModal("info")} isRTL={isRTL} />
           <Separator />
-          <SettingsRow icon="briefcase" iconColor="#9B59B6" label={merchant?.business_name ?? "—"} value={t(`auth.categories.${merchant?.category ?? "other"}` as any)} onPress={() => openModal("info")} isRTL={isRTL} />
+          <SettingsRow icon="briefcase" iconColor="#9B59B6" label={merchant?.business_name ?? "-"} value={t(`auth.categories.${merchant?.category ?? "other"}` as any)} onPress={() => openModal("info")} isRTL={isRTL} />
         </SettingsSection>
 
         {/* Mon commerce */}
@@ -738,7 +701,6 @@ export default function MerchantProfileScreen() {
             }
           />
           <Separator />
-          {/* ── Ligne Paiement ── */}
           <SettingsRow
             icon={getPaymentRowIcon()}
             iconColor={getPaymentRowColor()}
@@ -761,7 +723,7 @@ export default function MerchantProfileScreen() {
 
         {/* Préférences */}
         <SettingsSection title={l("Préférences", "Preferences", "التفضيلات")} isRTL={isRTL}>
-          <SettingsRow icon="globe" iconColor="#3498DB" label={t("profile.language")} value={LANGS.find((l) => l.code === language)?.label} onPress={() => openModal("lang")} isRTL={isRTL} />
+          <SettingsRow icon="globe" iconColor="#3498DB" label={t("profile.language")} value={LANGS.find((x) => x.code === language)?.label} onPress={() => openModal("lang")} isRTL={isRTL} />
           <Separator />
           <SettingsRow icon="droplet" iconColor={merchantAccentColor} label={l("Couleur principale", "Main color", "اللون الرئيسي")} onPress={() => openModal("color")} isRTL={isRTL}
             rightElement={
@@ -791,14 +753,11 @@ export default function MerchantProfileScreen() {
         </SettingsSection>
       </ScrollView>
 
-      {/* ════════════════════════════════════════
-          Modal PAIEMENT
-      ════════════════════════════════════════ */}
+      {/* Modal PAIEMENT */}
       <BottomModal visible={activeModal === "payment"} onClose={closeModal} title={l("Paiement", "Payment", "الدفع")} colors={colors}>
         <ScrollView style={{ maxHeight: 580 }} showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
           <View style={{ padding: 20, gap: 16 }}>
 
-            {/* ── Etat paiement actuel ── */}
             {isTrial ? (
               <View style={[styles.paymentCard, { backgroundColor: "#F9A60210", borderColor: "#F9A60230" }]}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
@@ -810,7 +769,7 @@ export default function MerchantProfileScreen() {
                       {l("Essai gratuit", "Free trial", "تجربة مجانية")}
                     </Text>
                     <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: fs(13), marginTop: 2 }}>
-                      {l(`${daysLeft} jour(s) restant(s)`, `${daysLeft} day(s) left`, `${daysLeft} يوم متبقي`)}
+                      {l(daysLeft + " jour(s) restant(s)", daysLeft + " day(s) left", daysLeft + " يوم متبقي")}
                     </Text>
                   </View>
                   <View style={[styles.trialBadge, { backgroundColor: "#F9A60220", borderColor: "#F9A60240" }]}>
@@ -838,44 +797,19 @@ export default function MerchantProfileScreen() {
                     </Text>
                     <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: fs(12), marginTop: 2 }}>
                       {l("Plan", "Plan", "الخطة")} : {getPlanDisplayLabel(pendingRequest.plan, lang)}
-                      {pendingRequest.amount ? ` · ${pendingRequest.amount} DH` : ""}
+                      {pendingRequest.amount ? " - " + pendingRequest.amount + " DH" : ""}
                     </Text>
                     <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: fs(11), marginTop: 2 }}>
                       {l("Envoyée le", "Sent on", "أُرسل في")} {formatDate(pendingRequest.created_at, lang)}
                     </Text>
                   </View>
                 </View>
-                {/* Justificatif déjà uploadé ? */}
-                {pendingRequest.proof_url ? (
-                  <View style={[styles.proofUploaded, { backgroundColor: "#27AE6010", borderColor: "#27AE6030" }]}>
-                    <Feather name="check-circle" size={iconSize(14)} color="#27AE60" />
-                    <Text style={{ color: "#27AE60", fontFamily: "Inter_600SemiBold", fontSize: fs(12), flex: 1 }}>
-                      {l("Justificatif envoyé · En attente de validation", "Proof uploaded · Awaiting validation", "تم إرسال الإيصال · في انتظار التحقق")}
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={{ marginTop: sp(12), gap: sp(8) }}>
-                    <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: fs(12) }}>
-                      {l("Envoyez votre justificatif de virement pour accélérer la validation.", "Upload your transfer proof to speed up validation.", "أرسل إيصال التحويل لتسريع التحقق.")}
-                    </Text>
-                    <TouchableOpacity
-                      onPress={handlePickProof}
-                      disabled={uploadingProof}
-                      style={[styles.uploadBtn, { borderColor: "#F9A602", backgroundColor: "#F9A60210" }]}
-                    >
-                      {uploadingProof
-                        ? <ActivityIndicator size="small" color="#F9A602" />
-                        : <Feather name="upload" size={iconSize(16)} color="#F9A602" />
-                      }
-                      <Text style={{ color: "#F9A602", fontFamily: "Inter_700Bold", fontSize: fs(14) }}>
-                        {uploadingProof
-                          ? l("Envoi...", "Uploading...", "جاري الرفع...")
-                          : l("Ajouter le justificatif", "Add proof", "إضافة إيصال")
-                        }
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
+                <View style={[styles.alertBox, { backgroundColor: colors.background, borderColor: colors.border, marginTop: sp(12) }]}>
+                  <Feather name="info" size={iconSize(13)} color="#F9A602" />
+                  <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: fs(12), flex: 1 }}>
+                    {l("Effectuez le paiement puis envoyez le reçu par WhatsApp pour accélérer la validation.", "Make the payment then send the receipt via WhatsApp to speed up validation.", "قم بالدفع ثم أرسل الإيصال عبر واتساب لتسريع التحقق.")}
+                  </Text>
+                </View>
               </View>
             ) : paymentInfo ? (
               <View style={[styles.paymentCard, { backgroundColor: (paymentInfo.is_due_soon ? "#E67E22" : "#27AE60") + "10", borderColor: (paymentInfo.is_due_soon ? "#E67E22" : "#27AE60") + "30" }]}>
@@ -905,7 +839,6 @@ export default function MerchantProfileScreen() {
                     { icon: "calendar" as const, label: l("Prochain paiement", "Next payment", "الدفع القادم"), value: formatDate(paymentInfo.next_payment_date, lang) },
                     { icon: "layers" as const, label: l("Plan", "Plan", "الخطة"), value: getPlanDisplayLabel(paymentInfo.plan, lang) },
                     { icon: "refresh-cw" as const, label: l("Fréquence", "Frequency", "التكرار"), value: getFrequencyLabel(paymentInfo.payment_frequency, lang) },
-                    { icon: "dollar-sign" as const, label: l("Paiement", "Payment", "الدفع"), value: paymentInfo.payment_method === "bank_transfer" ? l("Virement", "Transfer", "تحويل") : "CashPlus" },
                   ].map((row, i) => (
                     <View key={i} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                       <Feather name={row.icon} size={iconSize(13)} color={colors.mutedForeground} />
@@ -914,29 +847,18 @@ export default function MerchantProfileScreen() {
                     </View>
                   ))}
                 </View>
-                {/* Bouton upload renouvellement */}
                 {paymentInfo.is_due_soon && (
-                  <TouchableOpacity
-                    onPress={handlePickProof}
-                    disabled={uploadingProof}
-                    style={[styles.uploadBtn, { borderColor: "#E67E22", backgroundColor: "#E67E2210", marginTop: sp(12) }]}
-                  >
-                    {uploadingProof
-                      ? <ActivityIndicator size="small" color="#E67E22" />
-                      : <Feather name="upload" size={iconSize(16)} color="#E67E22" />
-                    }
-                    <Text style={{ color: "#E67E22", fontFamily: "Inter_700Bold", fontSize: fs(14) }}>
-                      {uploadingProof
-                        ? l("Envoi...", "Uploading...", "جاري الرفع...")
-                        : l("Envoyer le justificatif", "Upload proof", "إرسال الإيصال")
-                      }
+                  <View style={[styles.alertBox, { backgroundColor: "#E67E2210", borderColor: "#E67E2220", marginTop: sp(12) }]}>
+                    <Feather name="alert-triangle" size={iconSize(13)} color="#E67E22" />
+                    <Text style={{ color: "#E67E22", fontFamily: "Inter_400Regular", fontSize: fs(12), flex: 1 }}>
+                      {l("Renouvellement bientôt dû. Payez puis envoyez le reçu par WhatsApp.", "Renewal due soon. Pay then send the receipt via WhatsApp.", "التجديد قريباً. ادفع ثم أرسل الإيصال عبر واتساب.")}
                     </Text>
-                  </TouchableOpacity>
+                  </View>
                 )}
               </View>
             ) : (
               <View style={[styles.paymentCard, { backgroundColor: "#E74C3C10", borderColor: "#E74C3C30" }]}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: sp(12) }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
                   <View style={[styles.paymentIconWrap, { backgroundColor: "#E74C3C20" }]}>
                     <Feather name="alert-circle" size={iconSize(22)} color="#E74C3C" />
                   </View>
@@ -945,49 +867,15 @@ export default function MerchantProfileScreen() {
                       {l("Aucun paiement actif", "No active payment", "لا يوجد دفع نشط")}
                     </Text>
                     <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: fs(12), marginTop: 2 }}>
-                      {l("Envoyez votre justificatif de virement après avoir choisi un plan.", "Upload your transfer proof after choosing a plan.", "أرسل إيصال التحويل بعد اختيار خطة.")}
+                      {l("Choisissez un plan puis effectuez le paiement.", "Choose a plan then make the payment.", "اختر خطة ثم قم بالدفع.")}
                     </Text>
                   </View>
                 </View>
-                {/* ✅ Bouton upload toujours visible ici */}
-                <TouchableOpacity
-                  onPress={handlePickProof}
-                  disabled={uploadingProof}
-                  style={[styles.uploadBtn, { borderColor: "#E74C3C", backgroundColor: "#E74C3C10" }]}
-                >
-                  {uploadingProof
-                    ? <ActivityIndicator size="small" color="#E74C3C" />
-                    : <Feather name="upload" size={iconSize(16)} color="#E74C3C" />
-                  }
-                  <Text style={{ color: "#E74C3C", fontFamily: "Inter_700Bold", fontSize: fs(14) }}>
-                    {uploadingProof
-                      ? l("Envoi...", "Uploading...", "جاري الرفع...")
-                      : l("Envoyer un justificatif", "Upload proof", "إرسال إيصال")
-                    }
-                  </Text>
-                </TouchableOpacity>
               </View>
             )}
 
-            {/* ── RIB ── */}
-            <View style={[styles.ribBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
-              <Text style={{ color: colors.foreground, fontFamily: "Inter_700Bold", fontSize: fs(14), marginBottom: sp(10) }}>
-                {l("Coordonnées bancaires", "Banking details", "معلومات بنكية")}
-              </Text>
-              {[
-                { label: l("Bénéficiaire", "Beneficiary", "المستفيد"), value: ADMIN_RIB.name },
-                { label: "RIB", value: ADMIN_RIB.rib },
-                { label: l("Banque", "Bank", "البنك"), value: ADMIN_RIB.bank },
-                { label: "WhatsApp", value: ADMIN_RIB.whatsappDisplay },
-              ].map((row, i) => (
-                <View key={i} style={[styles.ribRow, i > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}>
-                  <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: fs(12) }}>{row.label}</Text>
-                  <Text style={{ color: colors.foreground, fontFamily: "Inter_700Bold", fontSize: fs(13) }}>{row.value}</Text>
-                </View>
-              ))}
-            </View>
+            {renderPaymentMethods()}
 
-            {/* ── Historique paiements ── */}
             {paymentHistory.length > 0 && (
               <View style={{ gap: sp(8) }}>
                 <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_600SemiBold", fontSize: fs(12), textTransform: "uppercase", letterSpacing: 0.8 }}>
@@ -998,10 +886,10 @@ export default function MerchantProfileScreen() {
                     <View style={[styles.historyDot, { backgroundColor: p.status === "confirmed" ? "#27AE60" : p.status === "pending" ? "#F9A602" : "#E74C3C" }]} />
                     <View style={{ flex: 1 }}>
                       <Text style={{ color: colors.foreground, fontFamily: "Inter_600SemiBold", fontSize: fs(13) }}>
-                        {p.amount} DH · {getPlanDisplayLabel(p.plan, lang)}
+                        {p.amount} DH - {getPlanDisplayLabel(p.plan, lang)}
                       </Text>
                       <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: fs(11) }}>
-                        {formatDate(p.created_at, lang)} · {getFrequencyLabel(p.payment_frequency, lang)}
+                        {formatDate(p.created_at, lang)} - {getFrequencyLabel(p.payment_frequency, lang)}
                       </Text>
                     </View>
                     <View style={[styles.historyStatus, {
@@ -1019,23 +907,24 @@ export default function MerchantProfileScreen() {
               </View>
             )}
 
-            {/* ── Boutons action ── */}
             <TouchableOpacity
-              onPress={() => Linking.openURL(`https://wa.me/${ADMIN_RIB.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(l("Bonjour, j'ai une question concernant mon paiement Fideliio.", "Hello, I have a question about my Fideliio payment.", "مرحباً، لدي سؤال حول دفعتي في Fideliio."))}`)}
+              onPress={() => openWhatsApp(l(
+                "Bonjour, j'ai effectué le paiement pour mon abonnement Fideliio. Voici le reçu :",
+                "Hello, I've made the payment for my Fideliio subscription. Here's the receipt:",
+                "مرحباً، لقد قمت بالدفع لاشتراك Fideliio. هذا هو الإيصال:",
+              ))}
               style={styles.whatsappBtn}
             >
               <Feather name="message-circle" size={iconSize(18)} color="#fff" />
               <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: fs(14) }}>
-                {l("Contacter via WhatsApp", "Contact via WhatsApp", "التواصل عبر واتساب")}
+                {l("Envoyer le reçu par WhatsApp", "Send receipt via WhatsApp", "إرسال الإيصال عبر واتساب")}
               </Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
       </BottomModal>
 
-      {/* ════════════════════════════════════════
-          Modal ABONNEMENT
-      ════════════════════════════════════════ */}
+      {/* Modal ABONNEMENT */}
       <BottomModal visible={activeModal === "sub"} onClose={closeModal} title={l("Mon abonnement", "My subscription", "اشتراكي")} colors={colors}>
         <KeyboardAwareScrollView style={{ maxHeight: 560 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" bottomOffset={80}>
           <View style={{ padding: 20, gap: 16 }}>
@@ -1061,7 +950,7 @@ export default function MerchantProfileScreen() {
                   <View style={styles.subDetailRow}>
                     <Feather name="gift" size={iconSize(14)} color={planColor} />
                     <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: fs(13) }}>
-                      {l(`Essai gratuit — ${daysLeft} jour(s) restant(s)`, `Free trial — ${daysLeft} day(s) left`, `تجربة مجانية — ${daysLeft} يوم متبقي`)}
+                      {l("Essai gratuit - " + daysLeft + " jour(s) restant(s)", "Free trial - " + daysLeft + " day(s) left", "تجربة مجانية · " + daysLeft + " يوم")}
                     </Text>
                   </View>
                 )}
@@ -1077,7 +966,7 @@ export default function MerchantProfileScreen() {
                     <View style={styles.subDetailRow}>
                       <Feather name="users" size={iconSize(14)} color={planColor} />
                       <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: fs(13) }}>
-                        {isActive && planKey !== "free" && planKey !== "none" ? l("Clients illimités", "Unlimited customers", "عملاء غير محدودين") : l("10 clients max", "10 customers max", "10 عملاء كحد أقصى")}
+                        {isActive && planKey !== "free" && planKey !== "none" ? l("Clients illimités", "Unlimited customers", "عملاء غير محدودين") : l("10 clients max", "10 customers max", "10 عملاء")}
                       </Text>
                     </View>
                     {currentCycleKnown && isActive && !isTrial && (
@@ -1092,7 +981,7 @@ export default function MerchantProfileScreen() {
                       <View style={styles.subDetailRow}>
                         <Feather name="home" size={iconSize(14)} color={planColor} />
                         <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: fs(13) }}>
-                          {l(`${subscription?.max_stores ?? 2} commerces actifs`, `${subscription?.max_stores ?? 2} active stores`, `${subscription?.max_stores ?? 2} متاجر نشطة`)}
+                          {l((subscription?.max_stores ?? 2) + " commerces actifs", (subscription?.max_stores ?? 2) + " active stores", (subscription?.max_stores ?? 2) + " متاجر نشطة")}
                         </Text>
                       </View>
                     )}
@@ -1129,7 +1018,7 @@ export default function MerchantProfileScreen() {
             )}
 
             {isSuspended && (
-              <TouchableOpacity onPress={() => Linking.openURL(`https://wa.me/${ADMIN_RIB.whatsapp.replace(/\D/g, "")}`)} style={[styles.changePlanBtn, { borderColor: "#E74C3C" }]}>
+              <TouchableOpacity onPress={() => openWhatsApp(l("Bonjour, mon compte Fideliio est suspendu.", "Hello, my Fideliio account is suspended.", "مرحباً، حسابي في Fideliio موقوف."))} style={[styles.changePlanBtn, { borderColor: "#E74C3C" }]}>
                 <Feather name="message-circle" size={iconSize(16)} color="#E74C3C" />
                 <Text style={{ color: "#E74C3C", fontFamily: "Inter_700Bold", fontSize: fs(15) }}>
                   {l("Contacter le support", "Contact support", "اتصل بالدعم")}
@@ -1164,51 +1053,41 @@ export default function MerchantProfileScreen() {
         </KeyboardAwareScrollView>
       </BottomModal>
 
-      {/* ════════════════════════════════════════
-          Modal DEMANDE ENVOYÉE
-      ════════════════════════════════════════ */}
-      <BottomModal visible={activeModal === "requestSent"} onClose={closeModal} title={l("Demande envoyée ✓", "Request sent ✓", "تم الإرسال ✓")} colors={colors}>
-        <View style={{ padding: 20, gap: 16 }}>
-          <View style={[styles.successBox, { backgroundColor: "#27AE6010", borderColor: "#27AE6030" }]}>
-            <Feather name="check-circle" size={iconSize(32)} color="#27AE60" />
-            <Text style={{ color: colors.foreground, fontFamily: "Inter_700Bold", fontSize: fs(16), textAlign: "center" }}>
-              {l("Demande envoyée avec succès !", "Request sent successfully!", "تم إرسال الطلب بنجاح!")}
-            </Text>
-            <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: fs(13), textAlign: "center", lineHeight: 20 }}>
-              {l("Effectuez votre virement puis envoyez le justificatif depuis la section Paiement.", "Make your transfer then upload the proof from the Payment section.", "قم بالتحويل ثم أرسل الإيصال من قسم الدفع.")}
-            </Text>
+      {/* Modal DEMANDE ENVOYEE */}
+      <BottomModal visible={activeModal === "requestSent"} onClose={closeModal} title={l("Demande envoyée", "Request sent", "تم الإرسال")} colors={colors}>
+        <ScrollView style={{ maxHeight: 580 }} showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+          <View style={{ padding: 20, gap: 16 }}>
+            <View style={[styles.successBox, { backgroundColor: "#27AE6010", borderColor: "#27AE6030" }]}>
+              <Feather name="check-circle" size={iconSize(32)} color="#27AE60" />
+              <Text style={{ color: colors.foreground, fontFamily: "Inter_700Bold", fontSize: fs(16), textAlign: "center" }}>
+                {l("Demande envoyée avec succès !", "Request sent successfully!", "تم إرسال الطلب بنجاح!")}
+              </Text>
+              <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: fs(13), textAlign: "center", lineHeight: 20 }}>
+                {l("Effectuez votre paiement puis envoyez le reçu par WhatsApp.", "Make your payment then send the receipt via WhatsApp.", "قم بالدفع ثم أرسل الإيصال عبر واتساب.")}
+              </Text>
+            </View>
+
+            {renderPaymentMethods()}
+
+            <TouchableOpacity
+              onPress={() => openWhatsApp(l(
+                "Bonjour, j'ai effectué le paiement pour mon abonnement Fideliio. Voici le reçu :",
+                "Hello, I've made the payment for my Fideliio subscription. Here's the receipt:",
+                "مرحباً، لقد قمت بالدفع لاشتراك Fideliio. هذا هو الإيصال:",
+              ))}
+              style={styles.whatsappBtn}
+            >
+              <Feather name="message-circle" size={iconSize(18)} color="#fff" />
+              <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: fs(14) }}>
+                {l("Envoyer le reçu par WhatsApp", "Send receipt via WhatsApp", "إرسال الإيصال عبر واتساب")}
+              </Text>
+            </TouchableOpacity>
+            <Button title={l("Fermer", "Close", "إغلاق")} onPress={closeModal} style={{ backgroundColor: colors.border }} />
           </View>
-          <View style={[styles.ribBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
-            <Text style={{ color: colors.foreground, fontFamily: "Inter_700Bold", fontSize: fs(14), marginBottom: sp(10) }}>
-              {l("Coordonnées bancaires", "Banking details", "معلومات بنكية")}
-            </Text>
-            {[
-              { label: l("Bénéficiaire", "Beneficiary", "المستفيد"), value: ADMIN_RIB.name },
-              { label: "RIB", value: ADMIN_RIB.rib },
-              { label: l("Banque", "Bank", "البنك"), value: ADMIN_RIB.bank },
-            ].map((row, i) => (
-              <View key={i} style={[styles.ribRow, i > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}>
-                <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: fs(12) }}>{row.label}</Text>
-                <Text style={{ color: colors.foreground, fontFamily: "Inter_700Bold", fontSize: fs(13) }}>{row.value}</Text>
-              </View>
-            ))}
-          </View>
-          <TouchableOpacity
-            onPress={() => Linking.openURL(`https://wa.me/${ADMIN_RIB.whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(l("Bonjour, j'ai effectué le virement pour mon abonnement Fideliio.", "Hello, I've made the transfer for my Fideliio subscription.", "مرحباً، لقد أجريت التحويل لاشتراك Fideliio."))}`)}
-            style={styles.whatsappBtn}
-          >
-            <Feather name="message-circle" size={iconSize(18)} color="#fff" />
-            <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: fs(14) }}>
-              {l("Confirmer par WhatsApp", "Confirm via WhatsApp", "تأكيد عبر واتساب")}
-            </Text>
-          </TouchableOpacity>
-          <Button title={l("Fermer", "Close", "إغلاق")} onPress={closeModal} style={{ backgroundColor: colors.border }} />
-        </View>
+        </ScrollView>
       </BottomModal>
 
-      {/* ════════════════════════════════════════
-          Modal CHANGEMENT DE PLAN
-      ════════════════════════════════════════ */}
+      {/* Modal CHANGEMENT DE PLAN */}
       <BottomModal visible={activeModal === "changePlan"} onClose={closeModal} title={l("Choisir un plan", "Choose a plan", "اختر خطة")} colors={colors}>
         <ScrollView style={{ maxHeight: 560 }} showsVerticalScrollIndicator={false} nestedScrollEnabled keyboardShouldPersistTaps="handled">
           <View style={{ padding: 16, gap: 14 }}>
@@ -1323,14 +1202,14 @@ export default function MerchantProfileScreen() {
             <View style={[styles.paymentNote, { backgroundColor: colors.background, borderColor: colors.border }]}>
               <Feather name="info" size={iconSize(13)} color={colors.mutedForeground} />
               <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: fs(12), flex: 1, lineHeight: 18 }}>
-                {l("Après envoi de votre demande, effectuez un virement. Notre équipe activera votre plan sous 24h.", "After sending your request, make a transfer. Our team will activate your plan within 24h.", "بعد إرسال طلبك، قم بتحويل. سيقوم فريقنا بالتفعيل خلال 24 ساعة.")}
+                {l("Après envoi de votre demande, payez par virement, CashPlus ou Wafacash. Notre équipe activera votre plan sous 24h.", "After sending your request, pay by transfer, CashPlus or Wafacash. Our team will activate your plan within 24h.", "بعد إرسال طلبك، ادفع عبر تحويل أو CashPlus أو Wafacash. سيقوم فريقنا بالتفعيل خلال 24 ساعة.")}
               </Text>
             </View>
           </View>
         </ScrollView>
       </BottomModal>
 
-      {/* ── Autres modals ── */}
+      {/* Autres modals */}
       <BottomModal visible={activeModal === "info"} onClose={closeModal} title={t("profile.myInfo")} colors={colors}>
         <KeyboardAwareScrollView style={{ maxHeight: 500 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" bottomOffset={60}>
           <View style={{ padding: 20, gap: 12 }}>
@@ -1396,13 +1275,13 @@ export default function MerchantProfileScreen() {
         <KeyboardAwareScrollView keyboardShouldPersistTaps="handled" bottomOffset={60} showsVerticalScrollIndicator={false}>
           <View style={{ padding: 20, gap: 20 }}>
             <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: fs(13), lineHeight: 20, textAlign }}>
-              {l("Les niveaux sont basés sur les points cumulés à vie — ils ne baissent jamais.", "Tiers are based on lifetime points — they never decrease.", "المستويات مبنية على النقاط المتراكمة مدى الحياة.")}
+              {l("Les niveaux sont basés sur les points cumulés à vie - ils ne baissent jamais.", "Tiers are based on lifetime points - they never decrease.", "المستويات مبنية على النقاط المتراكمة مدى الحياة.")}
             </Text>
             <View style={[styles.tierPreview, { borderColor: colors.border }]}>
               {[
                 { emoji: "🥉", label: "Bronze", color: "#CD7F32", desc: l("Dès 0 pts", "From 0 pts", "من 0 نقطة"), pts: "0" },
-                { emoji: "🥈", label: "Silver", color: "#C0C0C0", desc: l(`Dès ${silverThreshold} pts`, `From ${silverThreshold} pts`, `من ${silverThreshold} نقطة`), pts: silverThreshold },
-                { emoji: "🥇", label: "Gold", color: "#FFD700", desc: l(`Dès ${goldThreshold} pts`, `From ${goldThreshold} pts`, `من ${goldThreshold} نقطة`), pts: goldThreshold },
+                { emoji: "🥈", label: "Silver", color: "#C0C0C0", desc: l("Dès " + silverThreshold + " pts", "From " + silverThreshold + " pts", "من " + silverThreshold + " نقطة"), pts: silverThreshold },
+                { emoji: "🥇", label: "Gold", color: "#FFD700", desc: l("Dès " + goldThreshold + " pts", "From " + goldThreshold + " pts", "من " + goldThreshold + " نقطة"), pts: goldThreshold },
               ].map((tier, i) => (
                 <View key={i} style={[styles.tierItem, i < 2 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}>
                   <Text style={{ fontSize: fs(24) }}>{tier.emoji}</Text>
@@ -1411,7 +1290,7 @@ export default function MerchantProfileScreen() {
                     <Text style={{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: fs(12) }}>{tier.desc}</Text>
                   </View>
                   <View style={[styles.tierBadge, { backgroundColor: tier.color + "20", borderColor: tier.color + "40" }]}>
-                    <Text style={{ color: tier.color, fontFamily: "Inter_700Bold", fontSize: fs(12) }}>{tier.pts === "0" ? "0+" : `${tier.pts}+`}</Text>
+                    <Text style={{ color: tier.color, fontFamily: "Inter_700Bold", fontSize: fs(12) }}>{tier.pts === "0" ? "0+" : tier.pts + "+"}</Text>
                   </View>
                 </View>
               ))}
@@ -1433,12 +1312,12 @@ export default function MerchantProfileScreen() {
 
       <BottomModal visible={activeModal === "lang"} onClose={closeModal} title={t("profile.language")} colors={colors}>
         <View style={{ padding: 20, gap: 4 }}>
-          {LANGS.map((l) => (
-            <TouchableOpacity key={l.code} onPress={() => { setLanguage(l.code); closeModal(); }}
-              style={[styles.langOption, { backgroundColor: language === l.code ? merchantAccentColor + "15" : "transparent", borderRadius: 12 }]}>
-              <Text allowFontScaling={false} style={{ fontSize: fs(24) }}>{l.flag}</Text>
-              <Text allowFontScaling={false} style={{ flex: 1, color: colors.foreground, fontFamily: language === l.code ? "Inter_600SemiBold" : "Inter_400Regular", fontSize: fs(16) }}>{l.label}</Text>
-              {language === l.code && <Feather name="check" size={iconSize(20)} color={merchantAccentColor} />}
+          {LANGS.map((x) => (
+            <TouchableOpacity key={x.code} onPress={() => { setLanguage(x.code); closeModal(); }}
+              style={[styles.langOption, { backgroundColor: language === x.code ? merchantAccentColor + "15" : "transparent", borderRadius: 12 }]}>
+              <Text allowFontScaling={false} style={{ fontSize: fs(24) }}>{x.flag}</Text>
+              <Text allowFontScaling={false} style={{ flex: 1, color: colors.foreground, fontFamily: language === x.code ? "Inter_600SemiBold" : "Inter_400Regular", fontSize: fs(16) }}>{x.label}</Text>
+              {language === x.code && <Feather name="check" size={iconSize(20)} color={merchantAccentColor} />}
             </TouchableOpacity>
           ))}
         </View>
@@ -1504,7 +1383,7 @@ const styles = StyleSheet.create({
   codeInput: { borderWidth: 1.5, borderRadius: 12, padding: 14, fontSize: fs(18), letterSpacing: 3, textAlign: "center" },
   successBox: { borderWidth: 1, borderRadius: 16, padding: 20, alignItems: "center", gap: sp(12) },
   ribBox: { borderWidth: 1.5, borderRadius: 12, padding: 14 },
-  ribRow: { paddingVertical: 10, gap: 2 },
+  ribRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 10, gap: 12 },
   whatsappBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#25D366", borderRadius: 12, paddingVertical: 14 },
   paymentNote: { flexDirection: "row", alignItems: "flex-start", gap: 8, padding: 12, borderRadius: 12, borderWidth: 1 },
   billingToggle: { flexDirection: "row", borderRadius: 12, borderWidth: 1, padding: 4, marginBottom: sp(4) },
@@ -1524,12 +1403,12 @@ const styles = StyleSheet.create({
   tierItem: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14 },
   tierBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99, borderWidth: 1 },
   errorBox: { flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderRadius: 10, borderWidth: 1 },
-  // ── Payment styles ──
   paymentCard: { borderWidth: 1, borderRadius: 16, padding: 16 },
   paymentIconWrap: { width: 48, height: 48, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   alertBox: { flexDirection: "row", alignItems: "flex-start", gap: 8, padding: 10, borderRadius: 10, borderWidth: 1 },
-  uploadBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderWidth: 1.5, borderRadius: 12, paddingVertical: 12 },
-  proofUploaded: { flexDirection: "row", alignItems: "center", gap: 8, padding: 10, borderRadius: 10, borderWidth: 1, marginTop: sp(10) },
+  payTabs: { flexDirection: "row", gap: 8 },
+  payTab: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, borderWidth: 1.5, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 6 },
+  payMethodNote: { flexDirection: "row", alignItems: "flex-start", gap: 6, paddingTop: 10, marginTop: 2 },
   historyRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12, borderRadius: 12, borderWidth: 1 },
   historyDot: { width: 8, height: 8, borderRadius: 4 },
   historyStatus: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 99 },
