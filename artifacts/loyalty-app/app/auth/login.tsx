@@ -12,6 +12,7 @@ import { fs } from "@/utils/responsive";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { Feather } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient"; // ✅ import ajouté
 
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useColors } from "@/hooks/useColors";
@@ -31,7 +32,6 @@ export default function LoginScreen() {
   const router = useRouter();
   const { completeOnboarding, language } = useApp();
 
-  // ✅ Lire le role passé en paramètre URL (/auth/login?role=customer)
   const { role: roleParam } = useLocalSearchParams<{ role?: string }>();
 
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -66,13 +66,10 @@ export default function LoginScreen() {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   }
 
-  // ── Navigation après auth réussie ────────────────────────
   async function navigateAfterAuth() {
     await completeOnboarding();
 
     const storedRole = await AsyncStorage.getItem("@active_role");
-
-    // FIX — priorité : storedRole → roleParam → /auth/role
     const effectiveRole = storedRole ?? roleParam ?? null;
 
     if (effectiveRole === "customer") {
@@ -80,15 +77,12 @@ export default function LoginScreen() {
       router.replace("/(customer)/home");
     } else if (effectiveRole === "merchant") {
       await AsyncStorage.setItem("@active_role", "merchant");
-      // Passer par /auth/role pour vérifier l'abonnement
       router.replace("/auth/role");
     } else {
-      // Aucun role connu → choix
       router.replace("/auth/role");
     }
   }
 
-  // ── Google OAuth ──────────────────────────────────────────
   async function handleGoogleLogin() {
     try {
       setGoogleLoading(true);
@@ -149,7 +143,6 @@ export default function LoginScreen() {
     }
   }
 
-  // ── Email / Password ──────────────────────────────────────
   async function handleSubmit() {
     const errs: Record<string, string> = {};
     if (!email.trim()) {
@@ -215,7 +208,6 @@ export default function LoginScreen() {
           throw error;
         }
         await completeOnboarding();
-        // Après inscription → utiliser le roleParam si disponible
         if (roleParam === "customer") {
           await AsyncStorage.setItem("@active_role", "customer");
           router.replace("/(customer)/home");
@@ -240,7 +232,6 @@ export default function LoginScreen() {
     }
   }
 
-  // ── Render ────────────────────────────────────────────────
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAwareScrollView
@@ -274,11 +265,11 @@ export default function LoginScreen() {
           </Text>
         </View>
 
-        {/* Toggle login / register */}
+        {/* ✅ Toggle login / register — couleurs explicites pour éviter le bug web */}
         <View
           style={[
             styles.toggleRow,
-            { backgroundColor: colors.muted, borderRadius: 12 },
+            { backgroundColor: "#F3F4F6", borderRadius: 12 },
           ]}
         >
           {(["login", "register"] as const).map((m) => (
@@ -292,7 +283,7 @@ export default function LoginScreen() {
               style={[
                 styles.toggleBtn,
                 {
-                  backgroundColor: mode === m ? colors.card : "transparent",
+                  backgroundColor: mode === m ? "#FFFFFF" : "transparent",
                   borderRadius: 10,
                   shadowColor: mode === m ? "#000" : "transparent",
                   shadowOpacity: 0.08,
@@ -305,8 +296,7 @@ export default function LoginScreen() {
                 style={[
                   styles.toggleText,
                   {
-                    color:
-                      mode === m ? colors.foreground : colors.mutedForeground,
+                    color: mode === m ? "#111827" : "#6B7280",
                     fontFamily:
                       mode === m ? "Inter_700Bold" : "Inter_400Regular",
                   },
@@ -411,19 +401,19 @@ export default function LoginScreen() {
           )}
         </View>
 
-        {/* CTA Email */}
+        {/* ✅ CTA Email — LinearGradient à la place de View */}
         <TouchableOpacity
           onPress={handleSubmit}
           activeOpacity={0.88}
           disabled={loading || googleLoading}
         >
-          <View
+          <LinearGradient
             colors={["#C85A17", "#E67E22"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={[
               styles.ctaBtn,
-              { borderRadius: colors.radius, opacity: loading ? 0.7 : 1 },
+              { borderRadius: colors.radius ?? 14, opacity: loading ? 0.7 : 1 },
             ]}
           >
             <Text style={[styles.ctaText, { fontFamily: "Inter_700Bold" }]}>
@@ -433,7 +423,7 @@ export default function LoginScreen() {
                   ? t("auth.login")
                   : t("auth.register")}
             </Text>
-          </View>
+          </LinearGradient>
         </TouchableOpacity>
 
         {/* Divider */}
@@ -450,7 +440,7 @@ export default function LoginScreen() {
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
         </View>
 
-        {/* Bouton Google */}
+        {/* ✅ Bouton Google — style explicite sans dépendre de colors.card */}
         <TouchableOpacity
           onPress={handleGoogleLogin}
           disabled={googleLoading || loading}
@@ -458,8 +448,8 @@ export default function LoginScreen() {
           style={[
             styles.googleBtn,
             {
-              borderColor: colors.border,
-              borderRadius: colors.radius,
+              borderColor: colors.border ?? "#E5E7EB",
+              borderRadius: colors.radius ?? 14,
               opacity: googleLoading ? 0.7 : 1,
             },
           ]}
@@ -477,7 +467,7 @@ export default function LoginScreen() {
           </Text>
         </TouchableOpacity>
 
-        {/* Bouton Téléphone */}
+        {/* ✅ Bouton Téléphone */}
         <TouchableOpacity
           onPress={() => router.push("/auth/phone-otp")}
           disabled={loading || googleLoading}
@@ -485,8 +475,8 @@ export default function LoginScreen() {
           style={[
             styles.googleBtn,
             {
-              borderColor: colors.border,
-              borderRadius: colors.radius,
+              borderColor: colors.border ?? "#E5E7EB",
+              borderRadius: colors.radius ?? 14,
               marginTop: 12,
             },
           ]}

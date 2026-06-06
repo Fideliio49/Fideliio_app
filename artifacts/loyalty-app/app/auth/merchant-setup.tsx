@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { fs, iconSize, sp } from "@/utils/responsive";
 import { useRouter } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient"; // ✅ ajouté
 
 import { Feather } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -154,13 +155,12 @@ export default function MerchantSetupScreen() {
           },
           { onConflict: "merchant_id" },
         );
-        // ✅ APRÈS — via RPC, billing_cycle transmis, trigger déclenché proprement
       } else {
         const { data: result, error } = await supabase.rpc("start_trial", {
           p_merchant_id: merchant.id,
           p_plan: plan,
           p_max_stores: maxStores,
-          p_billing_cycle: billingCycle, // "monthly" | "annual"
+          p_billing_cycle: billingCycle,
         });
 
         if (error) throw error;
@@ -172,10 +172,10 @@ export default function MerchantSetupScreen() {
         const expiresAt = res.expires_at
           ? new Date(res.expires_at)
           : (() => {
-              const d = new Date();
-              d.setMonth(d.getMonth() + 1);
-              return d;
-            })();
+            const d = new Date();
+            d.setMonth(d.getMonth() + 1);
+            return d;
+          })();
 
         setTrialExpiry(
           expiresAt.toLocaleDateString(
@@ -326,44 +326,29 @@ export default function MerchantSetupScreen() {
             </Text>
             {[
               isFree
-                ? l(
-                    "10 clients maximum",
-                    "10 customers max",
-                    "10 عملاء كحد أقصى",
-                  )
+                ? l("10 clients maximum", "10 customers max", "10 عملاء كحد أقصى")
                 : l(
-                    "Clients illimités pendant l'essai",
-                    "Unlimited customers during trial",
-                    "عملاء غير محدودين",
-                  ),
+                  "Clients illimités pendant l'essai",
+                  "Unlimited customers during trial",
+                  "عملاء غير محدودين",
+                ),
               isProPlus
                 ? l(
-                    `Jusqu'à ${selectedStores} commerces actifs`,
-                    `Up to ${selectedStores} active stores`,
-                    `حتى ${selectedStores} متاجر`,
-                  )
+                  `Jusqu'à ${selectedStores} commerces actifs`,
+                  `Up to ${selectedStores} active stores`,
+                  `حتى ${selectedStores} متاجر`,
+                )
                 : l("1 commerce actif", "1 active store", "متجر واحد نشط"),
               l("Scan QR code clients", "QR code scanning", "مسح رمز QR"),
-              l(
-                "Gestion des récompenses",
-                "Rewards management",
-                "إدارة المكافآت",
-              ),
-              l(
-                "Promotions & campagnes",
-                "Promotions & campaigns",
-                "العروض والحملات",
-              ),
+              l("Gestion des récompenses", "Rewards management", "إدارة المكافآت"),
+              l("Promotions & campagnes", "Promotions & campaigns", "العروض والحملات"),
             ].map((item, i) => (
               <View key={i} style={styles.includedRow}>
                 <Feather name="check" size={iconSize(14)} color="#27AE60" />
                 <Text
                   style={[
                     styles.includedText,
-                    {
-                      color: colors.mutedForeground,
-                      fontFamily: "Inter_400Regular",
-                    },
+                    { color: colors.mutedForeground, fontFamily: "Inter_400Regular" },
                   ]}
                 >
                   {item}
@@ -388,25 +373,26 @@ export default function MerchantSetupScreen() {
               >
                 {isProPlus
                   ? l(
-                      `Après l'essai : ${proPlusPrice?.monthly} DH/mois ou ${proPlusPrice?.annual} DH/an (2 mois offerts)`,
-                      `After trial: ${proPlusPrice?.monthly} DH/month or ${proPlusPrice?.annual} DH/year`,
-                      `بعد التجربة: ${proPlusPrice?.monthly} درهم/شهر`,
-                    )
+                    `Après l'essai : ${proPlusPrice?.monthly} DH/mois ou ${proPlusPrice?.annual} DH/an (2 mois offerts)`,
+                    `After trial: ${proPlusPrice?.monthly} DH/month or ${proPlusPrice?.annual} DH/year`,
+                    `بعد التجربة: ${proPlusPrice?.monthly} درهم/شهر`,
+                  )
                   : l(
-                      "Après votre essai : 99 DH/mois ou 990 DH/an (2 mois offerts)",
-                      "After your trial: 99 DH/month or 990 DH/year (2 months free)",
-                      "بعد التجربة: 99 درهم/شهر",
-                    )}
+                    "Après votre essai : 99 DH/mois ou 990 DH/an (2 mois offerts)",
+                    "After your trial: 99 DH/month or 990 DH/year (2 months free)",
+                    "بعد التجربة: 99 درهم/شهر",
+                  )}
               </Text>
             </View>
           )}
 
+          {/* ✅ Fix 1 — bouton "Commencer maintenant" */}
           <TouchableOpacity
             onPress={() => router.replace("/(merchant)/home")}
             activeOpacity={0.88}
             style={styles.ctaWrap}
           >
-            <View
+            <LinearGradient
               colors={["#1a237e", "#0288d1"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
@@ -416,7 +402,7 @@ export default function MerchantSetupScreen() {
                 {l("Commencer maintenant", "Get started", "ابدأ الآن")}
               </Text>
               <Feather name="arrow-right" size={iconSize(18)} color="#fff" />
-            </View>
+            </LinearGradient>
           </TouchableOpacity>
         </ScrollView>
       </View>
@@ -436,20 +422,12 @@ export default function MerchantSetupScreen() {
             onPress={() => setStep("plan")}
             style={{ marginBottom: sp(16) }}
           >
-            <Feather
-              name="arrow-left"
-              size={iconSize(24)}
-              color={colors.foreground}
-            />
+            <Feather name="arrow-left" size={iconSize(24)} color={colors.foreground} />
           </TouchableOpacity>
           <Text
             style={[
               styles.formTitle,
-              {
-                color: colors.foreground,
-                fontFamily: "Inter_700Bold",
-                marginBottom: sp(8),
-              },
+              { color: colors.foreground, fontFamily: "Inter_700Bold", marginBottom: sp(8) },
             ]}
           >
             {l("Plan Pro+", "Pro+ Plan", "خطة Pro+")}
@@ -457,11 +435,7 @@ export default function MerchantSetupScreen() {
           <Text
             style={[
               styles.formSub,
-              {
-                color: colors.mutedForeground,
-                fontFamily: "Inter_400Regular",
-                marginBottom: sp(24),
-              },
+              { color: colors.mutedForeground, fontFamily: "Inter_400Regular", marginBottom: sp(24) },
             ]}
           >
             {l(
@@ -471,9 +445,7 @@ export default function MerchantSetupScreen() {
             )}
           </Text>
 
-          <View
-            style={[styles.billingToggle, { backgroundColor: colors.muted }]}
-          >
+          <View style={[styles.billingToggle, { backgroundColor: colors.muted }]}>
             {(["monthly", "annual"] as const).map((cycle) => (
               <TouchableOpacity
                 key={cycle}
@@ -481,8 +453,7 @@ export default function MerchantSetupScreen() {
                 style={[
                   styles.billingBtn,
                   {
-                    backgroundColor:
-                      billingCycle === cycle ? colors.card : "transparent",
+                    backgroundColor: billingCycle === cycle ? colors.card : "transparent",
                     borderRadius: colors.radius,
                   },
                 ]}
@@ -491,14 +462,8 @@ export default function MerchantSetupScreen() {
                   style={[
                     {
                       fontSize: fs(13),
-                      color:
-                        billingCycle === cycle
-                          ? "#1a237e"
-                          : colors.mutedForeground,
-                      fontFamily:
-                        billingCycle === cycle
-                          ? "Inter_700Bold"
-                          : "Inter_400Regular",
+                      color: billingCycle === cycle ? "#1a237e" : colors.mutedForeground,
+                      fontFamily: billingCycle === cycle ? "Inter_700Bold" : "Inter_400Regular",
                     },
                   ]}
                 >
@@ -513,8 +478,7 @@ export default function MerchantSetupScreen() {
           <View style={{ gap: sp(12), marginTop: sp(16) }}>
             {PRO_PLUS_STORES.map((option) => {
               const isSelected = selectedStores === option.stores;
-              const price =
-                billingCycle === "annual" ? option.annual : option.monthly;
+              const price = billingCycle === "annual" ? option.annual : option.monthly;
               const period =
                 billingCycle === "annual"
                   ? l("/an", "/year", "/سنة")
@@ -536,11 +500,7 @@ export default function MerchantSetupScreen() {
                   <View
                     style={[
                       styles.storeIconWrap,
-                      {
-                        backgroundColor: isSelected
-                          ? "#9B59B620"
-                          : colors.muted,
-                      },
+                      { backgroundColor: isSelected ? "#9B59B620" : colors.muted },
                     ]}
                   >
                     <Feather
@@ -571,11 +531,7 @@ export default function MerchantSetupScreen() {
                         },
                       ]}
                     >
-                      {l(
-                        "1 mois gratuit inclus",
-                        "1 month free included",
-                        "شهر مجاني",
-                      )}
+                      {l("1 mois gratuit inclus", "1 month free included", "شهر مجاني")}
                     </Text>
                   </View>
                   <View style={{ alignItems: "flex-end" }}>
@@ -603,24 +559,21 @@ export default function MerchantSetupScreen() {
                     </Text>
                   </View>
                   {isSelected && (
-                    <Feather
-                      name="check-circle"
-                      size={iconSize(20)}
-                      color="#9B59B6"
-                    />
+                    <Feather name="check-circle" size={iconSize(20)} color="#9B59B6" />
                   )}
                 </TouchableOpacity>
               );
             })}
           </View>
 
+          {/* ✅ Fix 2 — bouton "Démarrer l'essai gratuit" Pro+ */}
           <TouchableOpacity
             onPress={handleProPlusConfirm}
             disabled={loading}
             activeOpacity={0.88}
             style={[styles.ctaWrap, { marginTop: sp(24) }]}
           >
-            <View
+            <LinearGradient
               colors={["#9B59B6", "#8E44AD"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
@@ -631,12 +584,12 @@ export default function MerchantSetupScreen() {
                 {loading
                   ? l("Configuration...", "Setting up...", "جارٍ الإعداد...")
                   : l(
-                      "Démarrer l'essai gratuit",
-                      "Start free trial",
-                      "ابدأ التجربة المجانية",
-                    )}
+                    "Démarrer l'essai gratuit",
+                    "Start free trial",
+                    "ابدأ التجربة المجانية",
+                  )}
               </Text>
-            </View>
+            </LinearGradient>
           </TouchableOpacity>
         </ScrollView>
       </View>
@@ -653,11 +606,7 @@ export default function MerchantSetupScreen() {
         title: l("Gratuit", "Free", "مجاني"),
         price: "0 DH",
         period: "",
-        desc: l(
-          "Pour démarrer simplement",
-          "To get started simply",
-          "للبدء ببساطة",
-        ),
+        desc: l("Pour démarrer simplement", "To get started simply", "للبدء ببساطة"),
         features: [
           l("10 clients maximum", "10 customers max", "10 عملاء كحد أقصى"),
           l("1 commerce", "1 store", "متجر واحد"),
@@ -674,28 +623,16 @@ export default function MerchantSetupScreen() {
         title: "Pro",
         price: "99 DH",
         period: l("/mois", "/month", "/شهر"),
-        desc: l(
-          "Pour un commerce actif",
-          "For one active store",
-          "لمتجر واحد نشط",
-        ),
+        desc: l("Pour un commerce actif", "For one active store", "لمتجر واحد نشط"),
         features: [
           l("Clients illimités", "Unlimited customers", "عملاء غير محدودين"),
           l("1 commerce actif", "1 active store", "متجر واحد نشط"),
-          l(
-            "Session unique (1 appareil)",
-            "Single session (1 device)",
-            "جهاز واحد فقط",
-          ),
+          l("Session unique (1 appareil)", "Single session (1 device)", "جهاز واحد فقط"),
           l("1 mois gratuit", "1 month free", "شهر مجاني"),
         ],
         trial: true,
         badge: l("Le plus populaire", "Most popular", "الأكثر شيوعاً"),
-        ctaLabel: l(
-          "Démarrer l'essai gratuit",
-          "Start free trial",
-          "ابدأ التجربة المجانية",
-        ),
+        ctaLabel: l("Démarrer l'essai gratuit", "Start free trial", "ابدأ التجربة المجانية"),
       },
       {
         key: "pro_plus" as PlanKey,
@@ -704,11 +641,7 @@ export default function MerchantSetupScreen() {
         title: "Pro+",
         price: l("Dès 149 DH", "From 149 DH", "من 149 درهم"),
         period: l("/mois", "/month", "/شهر"),
-        desc: l(
-          "Pour plusieurs commerces",
-          "For multiple stores",
-          "لعدة متاجر",
-        ),
+        desc: l("Pour plusieurs commerces", "For multiple stores", "لعدة متاجر"),
         features: [
           l("Clients illimités", "Unlimited customers", "عملاء غير محدودين"),
           l("2 à 5 commerces actifs", "2 to 5 active stores", "2 إلى 5 متاجر"),
@@ -728,24 +661,13 @@ export default function MerchantSetupScreen() {
           contentContainerStyle={[styles.scroll, { paddingTop: topPad + 24 }]}
           showsVerticalScrollIndicator={false}
         >
-          <TouchableOpacity
-            onPress={() => setStep("form")}
-            style={{ marginBottom: sp(16) }}
-          >
-            <Feather
-              name="arrow-left"
-              size={iconSize(24)}
-              color={colors.foreground}
-            />
+          <TouchableOpacity onPress={() => setStep("form")} style={{ marginBottom: sp(16) }}>
+            <Feather name="arrow-left" size={iconSize(24)} color={colors.foreground} />
           </TouchableOpacity>
           <Text
             style={[
               styles.formTitle,
-              {
-                color: colors.foreground,
-                fontFamily: "Inter_700Bold",
-                marginBottom: sp(4),
-              },
+              { color: colors.foreground, fontFamily: "Inter_700Bold", marginBottom: sp(4) },
             ]}
           >
             {l("Choisissez votre plan", "Choose your plan", "اختر خطتك")}
@@ -753,11 +675,7 @@ export default function MerchantSetupScreen() {
           <Text
             style={[
               styles.formSub,
-              {
-                color: colors.mutedForeground,
-                fontFamily: "Inter_400Regular",
-                marginBottom: sp(24),
-              },
+              { color: colors.mutedForeground, fontFamily: "Inter_400Regular", marginBottom: sp(24) },
             ]}
           >
             {l(
@@ -774,95 +692,34 @@ export default function MerchantSetupScreen() {
               activeOpacity={0.88}
               style={[
                 styles.planCard,
-                {
-                  borderColor: plan.color + "40",
-                  backgroundColor: plan.color + "06",
-                },
+                { borderColor: plan.color + "40", backgroundColor: plan.color + "06" },
               ]}
             >
               {plan.badge && (
-                <View
-                  style={[styles.planBadge, { backgroundColor: plan.color }]}
-                >
-                  <Text
-                    style={[
-                      {
-                        color: "#fff",
-                        fontSize: fs(10),
-                        fontFamily: "Inter_700Bold",
-                      },
-                    ]}
-                  >
+                <View style={[styles.planBadge, { backgroundColor: plan.color }]}>
+                  <Text style={[{ color: "#fff", fontSize: fs(10), fontFamily: "Inter_700Bold" }]}>
                     {plan.badge}
                   </Text>
                 </View>
               )}
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 12,
-                  marginBottom: sp(12),
-                }}
-              >
-                <View
-                  style={[
-                    styles.planIconWrap,
-                    { backgroundColor: plan.color + "20" },
-                  ]}
-                >
-                  <Feather
-                    name={plan.icon as any}
-                    size={iconSize(22)}
-                    color={plan.color}
-                  />
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: sp(12) }}>
+                <View style={[styles.planIconWrap, { backgroundColor: plan.color + "20" }]}>
+                  <Feather name={plan.icon as any} size={iconSize(22)} color={plan.color} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text
-                    style={[
-                      {
-                        color: plan.color,
-                        fontFamily: "Inter_700Bold",
-                        fontSize: fs(18),
-                      },
-                    ]}
-                  >
+                  <Text style={[{ color: plan.color, fontFamily: "Inter_700Bold", fontSize: fs(18) }]}>
                     {plan.title}
                   </Text>
-                  <Text
-                    style={[
-                      {
-                        color: colors.mutedForeground,
-                        fontFamily: "Inter_400Regular",
-                        fontSize: fs(12),
-                      },
-                    ]}
-                  >
+                  <Text style={[{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: fs(12) }]}>
                     {plan.desc}
                   </Text>
                 </View>
                 <View style={{ alignItems: "flex-end" }}>
-                  <Text
-                    style={[
-                      {
-                        color: colors.foreground,
-                        fontFamily: "Inter_700Bold",
-                        fontSize: fs(18),
-                      },
-                    ]}
-                  >
+                  <Text style={[{ color: colors.foreground, fontFamily: "Inter_700Bold", fontSize: fs(18) }]}>
                     {plan.price}
                   </Text>
                   {plan.period ? (
-                    <Text
-                      style={[
-                        {
-                          color: colors.mutedForeground,
-                          fontFamily: "Inter_400Regular",
-                          fontSize: fs(12),
-                        },
-                      ]}
-                    >
+                    <Text style={[{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: fs(12) }]}>
                       {plan.period}
                     </Text>
                   ) : null}
@@ -870,68 +727,24 @@ export default function MerchantSetupScreen() {
               </View>
               <View style={{ gap: sp(6) }}>
                 {plan.features.map((feat, i) => (
-                  <View
-                    key={i}
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 8,
-                    }}
-                  >
-                    <Feather
-                      name="check"
-                      size={iconSize(13)}
-                      color={plan.color}
-                    />
-                    <Text
-                      style={[
-                        {
-                          color: colors.mutedForeground,
-                          fontFamily: "Inter_400Regular",
-                          fontSize: fs(13),
-                        },
-                      ]}
-                    >
+                  <View key={i} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Feather name="check" size={iconSize(13)} color={plan.color} />
+                    <Text style={[{ color: colors.mutedForeground, fontFamily: "Inter_400Regular", fontSize: fs(13) }]}>
                       {feat}
                     </Text>
                   </View>
                 ))}
               </View>
               {plan.trial && (
-                <View
-                  style={[
-                    styles.trialChip,
-                    { backgroundColor: "#27AE6015", borderColor: "#27AE6030" },
-                  ]}
-                >
+                <View style={[styles.trialChip, { backgroundColor: "#27AE6015", borderColor: "#27AE6030" }]}>
                   <Feather name="gift" size={iconSize(12)} color="#27AE60" />
-                  <Text
-                    style={[
-                      {
-                        color: "#27AE60",
-                        fontFamily: "Inter_600SemiBold",
-                        fontSize: fs(12),
-                      },
-                    ]}
-                  >
-                    {l(
-                      "1 mois gratuit inclus",
-                      "1 month free included",
-                      "شهر مجاني مشمول",
-                    )}
+                  <Text style={[{ color: "#27AE60", fontFamily: "Inter_600SemiBold", fontSize: fs(12) }]}>
+                    {l("1 mois gratuit inclus", "1 month free included", "شهر مجاني مشمول")}
                   </Text>
                 </View>
               )}
               <View style={[styles.planCta, { backgroundColor: plan.color }]}>
-                <Text
-                  style={[
-                    {
-                      color: "#fff",
-                      fontFamily: "Inter_700Bold",
-                      fontSize: fs(14),
-                    },
-                  ]}
-                >
+                <Text style={[{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: fs(14) }]}>
                   {plan.ctaLabel}
                 </Text>
               </View>
@@ -951,31 +764,27 @@ export default function MerchantSetupScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+        {/* ✅ Bouton retour */}
+        <TouchableOpacity
+          onPress={() => router.replace("/auth/role")}
+          style={{ marginBottom: sp(16) }}
+        >
+          <Feather name="arrow-left" size={iconSize(24)} color={colors.foreground} />
+        </TouchableOpacity>
+
         <View style={styles.header}>
-          <View
+          <LinearGradient
             colors={["#1a237e", "#0288d1"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
             style={styles.headerIcon}
           >
             <Feather name="briefcase" size={iconSize(28)} color="#fff" />
-          </View>
-          <Text
-            style={[
-              styles.formTitle,
-              { color: colors.foreground, fontFamily: "Inter_700Bold" },
-            ]}
-          >
-            {l(
-              "Bienvenue sur Fideliio",
-              "Welcome to Fideliio",
-              "أهلاً بك في Fideliio",
-            )}
+          </LinearGradient>
+          <Text style={[styles.formTitle, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
+            {l("Bienvenue sur Fideliio", "Welcome to Fideliio", "أهلاً بك في Fideliio")}
           </Text>
-          <Text
-            style={[
-              styles.formSub,
-              { color: colors.mutedForeground, fontFamily: "Inter_400Regular" },
-            ]}
-          >
+          <Text style={[styles.formSub, { color: colors.mutedForeground, fontFamily: "Inter_400Regular" }]}>
             {l(
               "Dites-nous en plus sur votre commerce",
               "Tell us about your business",
@@ -986,30 +795,20 @@ export default function MerchantSetupScreen() {
 
         <Input
           label={l("Nom du commerce", "Business name", "اسم المتجر")}
-          placeholder={l(
-            "ex: Boulangerie du Soleil",
-            "e.g. Sunrise Coffee",
-            "مثال: مقهى الشروق",
-          )}
+          placeholder={l("ex: Boulangerie du Soleil", "e.g. Sunrise Coffee", "مثال: مقهى الشروق")}
           value={bizName}
           onChangeText={setBizName}
           leftIcon="briefcase"
           autoFocus
         />
 
-        <Text
-          style={[
-            styles.catLabel,
-            { color: colors.foreground, fontFamily: "Inter_600SemiBold" },
-          ]}
-        >
+        <Text style={[styles.catLabel, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]}>
           {l("Catégorie", "Category", "الفئة")}
         </Text>
         <View style={styles.catGrid}>
           {CATEGORY_KEYS.map((cat) => {
             const isSelected = category === cat.key;
-            const label =
-              cat.label[language as keyof typeof cat.label] ?? cat.label.fr;
+            const label = cat.label[language as keyof typeof cat.label] ?? cat.label.fr;
             return (
               <TouchableOpacity
                 key={cat.key}
@@ -1033,9 +832,7 @@ export default function MerchantSetupScreen() {
                     styles.catChipText,
                     {
                       color: isSelected ? "#1a237e" : colors.mutedForeground,
-                      fontFamily: isSelected
-                        ? "Inter_600SemiBold"
-                        : "Inter_400Regular",
+                      fontFamily: isSelected ? "Inter_600SemiBold" : "Inter_400Regular",
                     },
                   ]}
                 >
@@ -1052,23 +849,20 @@ export default function MerchantSetupScreen() {
           disabled={!bizName.trim() || !category}
           style={[styles.ctaWrap, { marginTop: sp(24) }]}
         >
-          <View
+          <LinearGradient
             colors={["#1a237e", "#0288d1"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={[
               styles.cta,
-              {
-                borderRadius: colors.radius,
-                opacity: !bizName.trim() || !category ? 0.5 : 1,
-              },
+              { borderRadius: colors.radius, opacity: !bizName.trim() || !category ? 0.5 : 1 },
             ]}
           >
             <Text style={[styles.ctaText, { fontFamily: "Inter_700Bold" }]}>
               {l("Continuer", "Continue", "متابعة")}
             </Text>
             <Feather name="arrow-right" size={iconSize(18)} color="#fff" />
-          </View>
+          </LinearGradient>
         </TouchableOpacity>
       </ScrollView>
     </View>
@@ -1087,12 +881,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   formTitle: { fontSize: fs(24), textAlign: "center" },
-  formSub: {
-    fontSize: fs(14),
-    textAlign: "center",
-    lineHeight: 21,
-    color: "#6B7280",
-  },
+  formSub: { fontSize: fs(14), textAlign: "center", lineHeight: 21, color: "#6B7280" },
   catLabel: { fontSize: fs(14), marginBottom: sp(10), marginTop: sp(4) },
   catGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   catChip: {

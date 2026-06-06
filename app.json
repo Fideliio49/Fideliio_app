@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "290d577e-fd92-47c3-8e48-191322a904a7"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.fideliio.workspace",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    }
+  }
+}

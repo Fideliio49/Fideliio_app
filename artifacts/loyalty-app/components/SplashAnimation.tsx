@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { View, Text, StyleSheet, Dimensions } from "react-native";
+import { View, Text, StyleSheet, Dimensions, Platform } from "react-native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -8,6 +8,7 @@ import Animated, {
   withSequence,
   Easing,
 } from "react-native-reanimated";
+import { LinearGradient } from "expo-linear-gradient"; // ✅ import ajouté
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { iconSize } from "@/utils/responsive";
@@ -67,9 +68,17 @@ function RingIcon({
   return (
     <Animated.View style={[styles.iconWrapper, animStyle]}>
       {icon.lib === "feather" ? (
-        <Feather name={icon.name as any} size={iconSize(20)} color="rgba(255,255,255,0.75)" />
+        <Feather
+          name={icon.name as any}
+          size={iconSize(20)}
+          color="rgba(255,255,255,0.75)"
+        />
       ) : (
-        <MaterialCommunityIcons name={icon.name as any} size={iconSize(20)} color="rgba(255,255,255,0.75)" />
+        <MaterialCommunityIcons
+          name={icon.name as any}
+          size={iconSize(20)}
+          color="rgba(255,255,255,0.75)"
+        />
       )}
     </Animated.View>
   );
@@ -81,7 +90,6 @@ export function SplashAnimation() {
   const scale = useSharedValue(1);
 
   useEffect(() => {
-    // Inner ring clockwise: full loop 12s
     innerRot.value = withRepeat(
       withTiming(2 * Math.PI, {
         duration: 12000,
@@ -91,7 +99,6 @@ export function SplashAnimation() {
       false
     );
 
-    // Outer ring counter-clockwise: full loop 18s
     outerRot.value = withRepeat(
       withTiming(-2 * Math.PI, {
         duration: 18000,
@@ -101,7 +108,6 @@ export function SplashAnimation() {
       false
     );
 
-    // Card pulse
     scale.value = withRepeat(
       withSequence(
         withTiming(1.06, { duration: 1250, easing: Easing.inOut(Easing.ease) }),
@@ -151,9 +157,9 @@ export function SplashAnimation() {
         ))}
       </View>
 
-      {/* Center F card */}
+      {/* ✅ Center F card — LinearGradient à la place de View */}
       <Animated.View style={[styles.cardWrap, cardStyle]}>
-        <View
+        <LinearGradient
           colors={["#1a1a6e", "#C85A17"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
@@ -161,7 +167,7 @@ export function SplashAnimation() {
         >
           <Text style={styles.fLetter}>F</Text>
           <View style={styles.goldDot} />
-        </View>
+        </LinearGradient>
       </Animated.View>
     </View>
   );

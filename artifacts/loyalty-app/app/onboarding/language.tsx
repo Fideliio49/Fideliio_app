@@ -8,6 +8,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
+import { LinearGradient } from "expo-linear-gradient"; // ✅ ajouté
 
 import { useColors } from "@/hooks/useColors";
 import { useApp, Language } from "@/context/AppContext";
@@ -34,19 +35,37 @@ export default function LanguageScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar barStyle="light-content" />
-      <View
+
+      {/* ✅ LinearGradient à la place de View */}
+      <LinearGradient
         colors={["#1a1a6e", "#2C3E8C", "#1a5276"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
         style={styles.header}
       >
-        <Text allowFontScaling={false} style={[styles.appName, { fontFamily: "Inter_700Bold" }]}>Fideliio</Text>
+        <Text
+          allowFontScaling={false}
+          style={[styles.appName, { fontFamily: "Inter_700Bold" }]}
+        >
+          Fideliio
+        </Text>
         <SplashAnimation />
-        <Text allowFontScaling={false} style={[styles.tagline, { fontFamily: "Inter_400Regular" }]}>
+        <Text
+          allowFontScaling={false}
+          style={[styles.tagline, { fontFamily: "Inter_400Regular" }]}
+        >
           {t("splash.tagline")}
         </Text>
-      </View>
+      </LinearGradient>
 
       <View style={styles.content}>
-        <Text allowFontScaling={false} style={[styles.title, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>
+        <Text
+          allowFontScaling={false}
+          style={[
+            styles.title,
+            { color: colors.foreground, fontFamily: "Inter_700Bold" },
+          ]}
+        >
           {t("language.select")}
         </Text>
 
@@ -74,14 +93,21 @@ export default function LanguageScreen() {
                     styles.langNative,
                     {
                       color: selected ? colors.coral : colors.foreground,
-                      fontFamily: selected ? "Inter_700Bold" : "Inter_500Medium",
+                      fontFamily: selected
+                        ? "Inter_700Bold"
+                        : "Inter_500Medium",
                     },
                   ]}
                 >
                   {lang.label}
                 </Text>
                 {selected && (
-                  <View style={[styles.checkDot, { backgroundColor: colors.coral }]} />
+                  <View
+                    style={[
+                      styles.checkDot,
+                      { backgroundColor: colors.coral },
+                    ]}
+                  />
                 )}
               </TouchableOpacity>
             );
